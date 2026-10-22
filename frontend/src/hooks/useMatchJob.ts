@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "../api/client";
-import type { Brief, JobStatus, MatchJob, MatchParams } from "../types";
+import type { Brief, CorpusKind, JobStatus, MatchJob, MatchParams } from "../types";
 
 /* Annotated with the union it mirrors, so a status the backend adds becomes a
  * compile error here rather than a status that silently never matches. */
@@ -13,7 +13,8 @@ const maxPollDurationMs = 15 * 60 * 1000;
  *  poll errors are tolerated so a transient blip does not throw away a run
  *  the server already finished. */
 const maxPollErrors = 3;
-const pollErrorBackoffMs = [1_000, 2_000, 4_000];
+// Two entries: the third failure throws, so the largest index reached is 1.
+const pollErrorBackoffMs = [1_000, 2_000];
 
 export function useMatchJob() {
   const [job, setJob] = useState<MatchJob | null>(null);
@@ -47,7 +48,10 @@ export function useMatchJob() {
     if (runRef.current) runRef.current.timer = timer;
   }), []);
 
-  const start = useCallback(async (brief: Brief, params: MatchParams) => {
+  /** `kind` is required, not defaulted: a job that omitted it would silently
+   *  search creators, so a caller that forgot to pass it would get a plausible
+   *  creator result on the Companies panel rather than an error. */
+  const start = useCallback(async (brief: Brief, params: MatchParams, kind: CorpusKind) => {
     const sequence = ++sequenceRef.current;
     const controller = new AbortController();
     runRef.current = { controller, timer: null };
@@ -55,7 +59,7 @@ export function useMatchJob() {
     setJob(null);
     const startedAt = Date.now();
     try {
-      let current = await api.createMatchJob(brief, params, { signal: controller.signal });
+      let current = await api.createMatchJob(brief, params, kind, { signal: controller.signal });
       setJob(current);
       let pollErrors = 0;
       while (!terminalStatuses.has(current.status)) {
@@ -70,7 +74,7 @@ export function useMatchJob() {
           if (controller.signal.aborted) return;
           pollErrors += 1;
           if (pollErrors >= maxPollErrors) throw caught;
-          if (!await wait(pollErrorBackoffMs[Math.min(pollErrors - 1, pollErrorBackoffMs.length - 1)], controller.signal)) return;
+          if (!await wait(pollErrorBackoffMs[pollErrors - 1], controller.signal)) return;
         }
         if (controller.signal.aborted || sequence !== sequenceRef.current) return;
         setJob(current);

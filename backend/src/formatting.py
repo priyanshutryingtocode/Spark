@@ -1,7 +1,10 @@
 """Display helpers, kept separate from pipeline logic so they're easy to
 swap out (e.g. if you later render results in a web UI instead of stdout)."""
 
-from .models import Brief, Influencer
+from typing import Any
+
+from .corpora import CREATORS, Corpus, Influencer
+from .models import Brief
 from .text_match import shared_terms, terms
 
 
@@ -16,7 +19,7 @@ def format_followers(n: int) -> str:
 def match_evidence(brief: Brief, influencer: Influencer) -> list[str]:
     """Deterministic profile evidence for a retrieved result.
 
-    The LLM's reason is checked against the profile in `src.ranking`; this is
+    The LLM's reason is checked against the profile in `src/ranking`; this is
     the independent backstop shown alongside it, built only from the text the
     creator was embedded as.
     """
@@ -43,7 +46,12 @@ def print_brief(brief: Brief) -> None:
     print(f"  Vibe: {brief.vibe}")
 
 
-def print_results(ranked: list[dict], candidates_by_id: dict[int, Influencer], brief: Brief) -> None:
+def print_results(
+    ranked: list[dict],
+    candidates_by_id: dict[int, Any],
+    brief: Brief,
+    corpus: Corpus = CREATORS,
+) -> None:
     fallback_entries = [e for e in ranked if e.get("source") == "fallback"]
     filled_entries = [e for e in ranked if e.get("source") == "filled"]
     if fallback_entries:
@@ -56,13 +64,21 @@ def print_results(ranked: list[dict], candidates_by_id: dict[int, Influencer], b
 
     print(f"\nTop {len(ranked)} matches (fit is AI-assessed against the brief):\n")
     for i, entry in enumerate(ranked, start=1):
-        inf = candidates_by_id[entry["id"]]
+        cand = candidates_by_id[entry["id"]]
         fit_tag = f"[{entry.get('fit', 'unknown')} fit] " if entry.get("fit") else ""
-        print(f"{i}. {fit_tag}{inf.handle}  ({inf.platform}, {inf.city})")
-        print(f"   {format_followers(inf.followers)} followers · {inf.engagement}% engagement")
-        if inf.similarity is not None:
-            print(f"   Semantic relevance: {inf.similarity:.1%}")
-        print(f"   Evidence: {'; '.join(match_evidence(brief, inf))}")
+        # A company is not a creator: it has no handle, no platform and no
+        # follower count, so the creator line would either crash or print
+        # fields it does not have.
+        if corpus.kind == "prospect":
+            place = ", ".join(part for part in (cand.city, cand.country) if part)
+            print(f"{i}. {fit_tag}{cand.name}  ({cand.industry}, {place})")
+            print(f"   {format_followers(cand.headcount)} employees")
+        else:
+            print(f"{i}. {fit_tag}{cand.handle}  ({cand.platform}, {cand.city})")
+            print(f"   {format_followers(cand.followers)} followers · {cand.engagement}% engagement")
+        if cand.similarity is not None:
+            print(f"   Semantic relevance: {cand.similarity:.1%}")
+        print(f"   Evidence: {'; '.join(match_evidence(brief, cand))}")
         for claim in entry.get("grounding", []):
             print(f"   Grounded in {claim['field']}: \"{claim['quote']}\"")
         print(f"   {entry['rationale']}\n")

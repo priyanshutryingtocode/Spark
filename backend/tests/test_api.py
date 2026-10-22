@@ -10,7 +10,8 @@ from api.main import create_app
 from api.schemas.models import MatchJobResponse, MatchParams
 from api.serialization import build_run_record
 from src import config
-from src.models import Brief, Influencer
+from src.corpora import Influencer
+from src.models import Brief
 
 
 class MemoryRepository:
@@ -28,12 +29,17 @@ class MemoryRepository:
         self.records[saved["id"]] = saved
         return saved
 
-    def list(self, limit, cursor=None, owner_id=None):
+    def list(self, limit, cursor=None, owner_id=None, kind=None):
         records = sorted(
             self.records.values(),
             key=lambda item: (item["created_at"], item["id"]),
             reverse=True,
         )
+        # Honours the filter rather than ignoring it: an in-memory stand-in that
+        # accepted `kind` and dropped it would make every panel-isolation test
+        # pass against a repository that does not isolate anything.
+        if kind is not None:
+            records = [r for r in records if r.get("kind", "creator") == kind]
         return records[:limit], None
 
     def get(self, run_id, owner_id=None):
@@ -47,11 +53,14 @@ class MemoryJobManager:
     def __init__(self):
         self.jobs = {}
 
-    def submit(self, brief, params, owner_id=None):
+    def submit(self, brief, params, owner_id=None, corpus=None):
         job_id = uuid4()
         now = datetime.now(timezone.utc)
         job = MatchJobResponse(
             job_id=job_id,
+            # Echoes the corpus the way JobManager does, so a test can assert the
+            # panel's kind reached the job rather than defaulting back to creator.
+            kind=getattr(corpus, "kind", "creator"),
             status="queued",
             stage="queued",
             created_at=now,
@@ -116,7 +125,7 @@ def test_job_manager_persists_match():
     repository = MemoryRepository()
     manager = JobManager(
         repository,
-        matcher=lambda job_id, brief, params: make_result(),
+        matcher=lambda job_id, brief, params, corpus: make_result(),
     )
     response = manager.submit(Brief(goal="high-energy strength training for beginners", platform="TikTok"), MatchParams(top_k=2, top_n=1))
     for _ in range(50):
@@ -200,7 +209,7 @@ def test_api_runs_export_compare_and_delete():
             json={"run_id_a": str(run_id), "run_id_b": str(run_id)},
         )
         assert compared.status_code == 200
-        assert len(compared.json()["shared_creators"]) == 1
+        assert len(compared.json()["shared"]) == 1
         assert client.delete(f"/api/v1/runs/{run_id}").status_code == 204
         assert client.get(f"/api/v1/runs/{run_id}").status_code == 404
 

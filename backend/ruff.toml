@@ -1,0 +1,13 @@
+# The backend had no static analysis at all, and a stale name in the job
+# manager shipped as a NameError that failed every match in the app while the
+# whole test suite passed -- because no test executed that path.
+#
+# F is pyflakes: undefined names, undefined imports, unused imports, and
+# redefinitions. E9 is the syntax and runtime-error rules.
+#
+# The style rules are deliberately not selected. The codebase does not follow
+# one house style, and a linter is not the place to start a rewrite; this is
+# here to catch the mistakes that cost a run, not the ones that cost a
+# preference.
+[lint]
+select = ["F", "E9"]

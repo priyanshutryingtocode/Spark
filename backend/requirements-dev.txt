@@ -1,0 +1,6 @@
+# Development-only. The deploy installs requirements.txt, and a linter is not
+# part of the runtime.
+#
+#     ../venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+#
+ruff>=0.17

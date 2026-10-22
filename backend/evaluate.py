@@ -30,14 +30,22 @@ from time import perf_counter
 
 from api.repositories.postgres_run_repository import PostgresRunRepository
 from src import config, vector_store
+from src.corpora import CREATORS, KINDS, get_corpus
 from src.embeddings import EmbeddingCache, embed_query, get_cached_query_vector
 from src.text_match import overlap_ratio, terms
 from src.gemini_client import get_client
-from src.match_service import rank_match, retrieve_candidates
+from src.match_service import rank_match, retrieve_for_run
+from src.retrieval import rerank_candidates
 from src.models import Brief
 
 BACKEND_ROOT = Path(__file__).resolve().parent
-DEFAULT_CASES = BACKEND_ROOT / "data" / "evaluation_cases.json"
+#: One golden dataset per corpus. They are separate files, not one file with a
+#: kind field, because the two suites ask different questions: a creator brief
+#: is about content and audience, a prospect brief about company fit.
+DEFAULT_CASES = {
+    "creator": BACKEND_ROOT / "data" / "evaluation_cases.json",
+    "prospect": BACKEND_ROOT / "data" / "prospect_cases.json",
+}
 REPORTS_DIR = BACKEND_ROOT / "reports"
 DEFAULT_QUERY_CACHE = BACKEND_ROOT / ".embed-cache"
 
@@ -55,16 +63,30 @@ def default_query_cache_path() -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate influencer retrieval and ranking quality.")
-    parser.add_argument("--cases", type=Path, default=DEFAULT_CASES, help="JSON golden-brief dataset")
+    parser = argparse.ArgumentParser(description="Evaluate retrieval (and ranking, where a rubric exists) quality.")
+    parser.add_argument(
+        "--kind", choices=sorted(KINDS), default="creator",
+        help="Which corpus to evaluate against. Ranking is measured for any "
+             "corpus that has a rubric of its own, and omitted entirely for one "
+             "that has not, rather than scoring it with another corpus's rules.",
+    )
+    parser.add_argument("--cases", type=Path, default=None,
+                        help="JSON golden-brief dataset (default: the --kind corpus's own)")
     parser.add_argument(
         "--output", type=Path, default=None,
-        help="JSON metrics output. Defaults to reports/evaluation-<rows>.json, named "
-             "for the dataset it measured, so runs at different corpus sizes cannot "
-             "overwrite or be mistaken for each other.",
+        help="JSON metrics output. Defaults to reports/evaluation-<kind>-<rows>.json, "
+             "named for BOTH the corpus and its size, so runs cannot overwrite or be "
+             "mistaken for each other. A creator run at 2000 and a prospect run at 500 "
+             "are different measurements.",
     )
     parser.add_argument("--top-k", type=int, default=config.DEFAULT_TOP_K_RETRIEVAL)
     parser.add_argument("--top-n", type=int, default=config.DEFAULT_TOP_N_RANKED)
+    parser.add_argument(
+        "--no-ranking", action="store_true",
+        help="Measure retrieval only, spending no ranking quota. The ranking "
+             "metrics are omitted from the report rather than reported as zero, "
+             "and the report says ranking was skipped and why.",
+    )
     parser.add_argument(
         "--rate-limit-per-min", type=int, default=10,
         help="Max ranking requests per minute to throttle to (free tier = 10). "
@@ -84,6 +106,8 @@ def parse_args() -> argparse.Namespace:
         help="Re-embed every case even if its vector was computed before.",
     )
     args = parser.parse_args()
+    if args.cases is None:
+        args.cases = DEFAULT_CASES[args.kind]
     if args.top_k <= 0 or args.top_n <= 0 or args.top_n > args.top_k:
         parser.error("top-k and top-n must be positive, and top-n cannot exceed top-k")
     if args.rate_limit_per_min <= 0:
@@ -102,6 +126,117 @@ def batch_windows(total: int, per_minute: int) -> list[list[int]]:
         list(range(start, min(start + per_minute, total)))
         for start in range(0, total, per_minute)
     ]
+
+
+def icp_match(candidate, expected_icp: dict, corpus=None) -> bool:
+    """Whether a company fits the ICP a brief stated.
+
+    The company counterpart of `audience_match`: the industry has to be one of
+    the wanted ones (when the brief named any -- a cross-vertical brief names
+    none), the size has to be inside the band, and the country has to be one of
+    the wanted ones. Every clause the brief stated is a requirement.
+
+    The industries are expanded through the corpus's verticals, the same way the
+    filter expands them. Without that the filter and the metric disagreed: a
+    "supply chain" company passed a "logistics" filter and was then scored as
+    wrong, so the report understated the corpus it was measuring.
+    """
+    if not expected_icp:
+        return True
+    industries = expected_icp.get("industries") or []
+    if industries:
+        if corpus is not None and getattr(corpus, "vertical_column", None):
+            from src.scoring import expand_vertical
+
+            industries = expand_vertical(list(industries), corpus.verticals)
+        if str(candidate.industry) not in {str(i) for i in industries}:
+            return False
+    size = expected_icp.get("size")
+    if size:
+        low, high = size[0], size[1]
+        if not low <= int(candidate.headcount) <= high:
+            return False
+    countries = expected_icp.get("countries") or []
+    if countries and str(candidate.country) not in {str(c) for c in countries}:
+        return False
+    return True
+
+
+def icp_precision(items, expected_icp: dict, corpus=None) -> float:
+    if not items or not expected_icp:
+        return 0.0
+    return sum(1 for item in items if icp_match(item, expected_icp, corpus)) / len(items)
+
+
+def audience_match(candidate, expected_audience: dict) -> bool:
+    """Whether a candidate's audience fits the campaign's target audience.
+
+    A conjunction: the age band has to be one of the wanted ones, the country
+    has to be one of the wanted ones, and the gender split has to lean the way
+    the brief asked. "Any" is satisfied by anything, so a brief that does not
+    care about gender does not penalise a candidate for it.
+    """
+    if not expected_audience:
+        return True
+    age = expected_audience.get("age") or []
+    if age and str(candidate.audience_age) not in {str(a) for a in age}:
+        return False
+    countries = expected_audience.get("countries") or []
+    if countries and str(candidate.audience_country) not in {str(c) for c in countries}:
+        return False
+    gender = str(expected_audience.get("gender") or "any").strip().lower()
+    if gender in {"", "any"}:
+        return True
+    split = str(candidate.audience_gender).lower()
+    if gender.startswith("f"):
+        return "female" in split and "male" not in split
+    if gender.startswith("m"):
+        return "male" in split and "female" not in split
+    return True
+
+
+def audience_precision(items, expected_audience: dict) -> float:
+    """The share of `items` whose audience fits the campaign."""
+    if not items or not expected_audience:
+        return 0.0
+    return sum(1 for item in items if audience_match(item, expected_audience)) / len(items)
+
+
+def fit_precision(items, expected_fit: dict, corpus=None) -> float:
+    """How well a shortlist fits what the brief asked for.
+
+    The audience for a creator, the ICP for a company. Dispatched on the corpus
+    rather than told which to use, so a call site cannot get it wrong by passing
+    the wrong expectation.
+    """
+    if not items or not expected_fit:
+        return 0.0
+    if corpus is not None and corpus.kind != "creator":
+        return icp_precision(items, expected_fit, corpus)
+    return audience_precision(items, expected_fit)
+
+
+def campaign_precision(items, expected_tags: set[str], expected_audience: dict,
+                       corpus=None) -> float:
+    """The share of `items` that are both on-topic and on-fit.
+
+    This is the metric that says whether the shortlist is a campaign shortlist
+    rather than two separate lists. The topical and fit halves are reported on
+    their own as well, because a change in one that is hidden by the other is
+    not a measurement.
+    """
+    if not items:
+        return 0.0
+    # A company fits an ICP; a creator fits an audience. The matcher follows the
+    # corpus rather than being told which to use, so a call site cannot get it
+    # wrong by passing the wrong one.
+    is_company = corpus is not None and corpus.kind != "creator"
+    def fits(item) -> bool:
+        if is_company:
+            return icp_match(item, expected_audience, corpus)
+        return audience_match(item, expected_audience)
+    hits = sum(1 for item in items if expected_tags & set(item.tags) and fits(item))
+    return hits / len(items)
 
 
 def tag_precision(items, expected_tags: set[str]) -> float:
@@ -162,19 +297,37 @@ def recall_of_ceiling(retrieved: int, pool: int, k: int) -> float:
     return retrieved / reachable if reachable else 1.0
 
 
-def _warmup(conn) -> None:
+def _warmup(conn, corpus) -> None:
     """Absorb cold-start costs (first embedding API call + first HNSW query) so
     case #1 isn't timed against them. Without this, the very first retrieval
     pays the embedding round-trip plus a cold full-table scan over the Any
     platform, inflating one case's retrieval_latency."""
     query_vec = embed_query("warmup")
-    vector_store.search(conn, query_embedding=query_vec, platform="Any", top_k=1)
+    vector_store.search(conn, query_embedding=query_vec, corpus=corpus, facet=None, top_k=1)
 
 
-def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None) -> dict:
+def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None,
+              corpus=CREATORS, ranks: bool = True) -> dict:
+    # A creator case states its target audience; a company case states its ICP.
+    # Both are the brief's requirements AND the definition of a correct
+    # candidate, so one field drives the filters and the judgement.
+    #
+    # The ICP was being dropped here: the brief was built from
+    # `expected_audience` alone, which a company case does not have, so the
+    # company evaluation ran briefs with no industry, size or country filter at
+    # all -- it measured unfiltered retrieval and called it the filtered path.
+    expected_audience = case.get("expected_audience") or {}
+    expected_icp = case.get("expected_icp") or {}
+    expected_fit = expected_icp or expected_audience
     brief = Brief(
         goal=case["goal"], platform=case.get("platform", "Any"),
         audience=case.get("audience", ""), vibe=case.get("vibe", ""),
+        audience_age=list(expected_audience.get("age", [])),
+        audience_gender=expected_audience.get("gender", ""),
+        audience_countries=list(expected_audience.get("countries", [])),
+        target_industries=list(expected_icp.get("industries", [])),
+        target_size=tuple(expected_icp["size"]) if expected_icp.get("size") else None,
+        target_countries=list(expected_icp.get("countries", [])),
     )
     expected_tags = set(case["expected_tags"])
     brief_terms = terms(f"{brief.goal} {brief.audience} {brief.vibe}")
@@ -184,69 +337,123 @@ def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None) -> d
     embed_ms = round((perf_counter() - embed_start) * 1000, 1)
 
     search_start = perf_counter()
-    candidates = retrieve_candidates(brief, top_k=top_k, query_vec=query_vec)
+    candidates, relaxed_filters = retrieve_for_run(
+        brief, top_k=top_k, query_vec=query_vec, corpus=corpus
+    )
     search_ms = round((perf_counter() - search_start) * 1000, 1)
+    # The reranked shortlist, computed before any ranking call. Both orders are
+    # kept so the report can show what the rerank changed and what it cost -- the
+    # audience metric should rise and the topical one should not collapse, and
+    # either half being invisible would make the trade unreadable.
+    reranked = rerank_candidates(brief, candidates, corpus)
 
     retrieval_ms = round(embed_ms + search_ms, 1)
 
     ranking_start = perf_counter()
-    ranked = rank_match(brief, candidates, top_n=top_n, client=client)
-    ranking_ms = round((perf_counter() - ranking_start) * 1000, 1)
+    # Ranking is optional per corpus. Having a rubric is the gate: a corpus
+    # without a rubric of its own must not be scored with the creator one, which
+    # would produce confident numbers about companies that mean nothing. The
+    # ranking keys are OMITTED from the result rather than defaulted to 0.0 --
+    # a missing key says "not measured", a 0.0 would say "measured, and it
+    # scored nothing", and the summary averages cannot tell those apart.
+    if ranks:
+        ranked = rank_match(
+            brief,
+            reranked,
+            top_n=top_n,
+            client=client,
+            corpus=corpus,
+            relaxed_filters=relaxed_filters,
+        )
+        ranking_ms = round((perf_counter() - ranking_start) * 1000, 1)
+        candidate_by_id = {candidate.id: candidate for candidate in candidates}
+        ranked_candidates = [candidate_by_id[item["id"]] for item in ranked]
+        ranked_correct = sum(1 for c in ranked_candidates if expected_tags & set(c.tags))
+    else:
+        ranked, ranked_candidates = [], []
+        ranked_correct = 0
 
-    candidate_by_id = {candidate.id: candidate for candidate in candidates}
-    ranked_candidates = [candidate_by_id[item["id"]] for item in ranked]
     retrieved_correct = sum(1 for c in candidates if expected_tags & set(c.tags))
-    ranked_correct = sum(1 for c in ranked_candidates if expected_tags & set(c.tags))
 
     with vector_store.get_connection() as conn:
-        pool = pool_for(conn, expected_tags, brief.platform)
+        pool = pool_for(conn, expected_tags, brief.platform, table=corpus.table)
+
     result = {
         "id": case["id"],
         "expected_tags": sorted(expected_tags),
+        "corpus_kind": corpus.kind,
         "platform": brief.platform,
         # True when the brief is deliberately worded away from the case's own
         # tags, so literal word matching cannot pass it. Reported per case, not
         # averaged -- see the hard_cases block below.
         "hard": bool(case.get("hard")),
         "retrieved_count": len(candidates),
+        "relaxed_filters": relaxed_filters,
         "retrieval_tag_precision_at_k": round(tag_precision(candidates, expected_tags), 3),
         "retrieval_tag_hit_at_k": retrieved_correct > 0,
-        # Label-free relevance: how much of the brand's own wording appears in
-        # the creators that came back.
+        # Label-free relevance: how much of the brief's own wording appears in
+        # the records that came back.
         "topic_overlap_at_k": round(
             mean(overlap_ratio(brief_terms, candidate) for candidate in candidates), 3
         ) if candidates else 0.0,
-        "ranked_tag_precision_at_n": round(tag_precision(ranked_candidates, expected_tags), 3),
-            # The retriever's own ordering, scored at the *same* cutoff the
-            # ranked list is scored at.
-            "retrieval_tag_precision_at_n": round(tag_precision(candidates[:top_n], expected_tags), 3),
+        # The retriever's own ordering, scored at the *same* cutoff the ranked
+        # list is scored at. Present for every corpus, and the number a future
+        # reranker has to beat.
+        "retrieval_tag_precision_at_n": round(tag_precision(candidates[:top_n], expected_tags), 3),
+        # The reranked shortlist at the same cutoff: the pair with the line above
+        # is the only thing that isolates what the rerank did.
+        "reranked_tag_precision_at_n": round(tag_precision(reranked[:top_n], expected_tags), 3),
+        # How well the shortlist fits what the brief asked for -- the audience
+        # for a creator, the ICP for a company.
+        "retrieval_fit_precision_at_n": round(fit_precision(candidates[:top_n], expected_fit, corpus), 3),
+        "reranked_fit_precision_at_n": round(fit_precision(reranked[:top_n], expected_fit, corpus), 3),
+        # Both at once, which is what a campaign shortlist actually is: on-topic
+        # AND the right audience. The topical number alone falls when a filter
+        # is doing its job, and that fall is the point.
+        "retrieval_campaign_precision_at_n": round(
+            campaign_precision(candidates[:top_n], expected_tags, expected_fit, corpus), 3),
+        "reranked_campaign_precision_at_n": round(
+            campaign_precision(reranked[:top_n], expected_tags, expected_fit, corpus), 3),
+        "pool_size": pool,
+        "ceiling_precision_at_k": round(ceiling_precision(pool, top_k), 3),
+        "recall_of_ceiling_at_k": round(recall_of_ceiling(retrieved_correct, pool, top_k), 3),
+        "retrieval_latency_ms": retrieval_ms,
+        "embed_latency_ms": embed_ms,
+        "search_latency_ms": search_ms,
+    }
+
+    if ranks:
+        result.update({
+            "ranked_tag_precision_at_n": round(tag_precision(ranked_candidates, expected_tags), 3),
             "ranking_gain_at_n": round(
                 tag_precision(ranked_candidates, expected_tags)
                 - tag_precision(candidates[:top_n], expected_tags),
                 3,
             ),
-        "pool_size": pool,
-        "ceiling_precision_at_k": round(ceiling_precision(pool, top_k), 3),
-        "recall_of_ceiling_at_k": round(recall_of_ceiling(retrieved_correct, pool, top_k), 3),
-        "ceiling_precision_at_n": round(ceiling_precision(pool, top_n), 3),
-        "recall_of_ceiling_at_n": round(recall_of_ceiling(ranked_correct, pool, top_n), 3),
-        "ranking_fallback": any(item.get("source") == "fallback" for item in ranked),
-        "fallback_count": sum(1 for item in ranked if item.get("source") == "fallback"),
-        "filled_count": sum(1 for item in ranked if item.get("source") == "filled"),
-        "strong_fit_count": sum(1 for item in ranked if item.get("fit") == "strong"),
-        "retrieval_latency_ms": retrieval_ms,
-        "embed_latency_ms": embed_ms,
-        "search_latency_ms": search_ms,
-        "ranking_latency_ms": ranking_ms,
-    }
+            "ceiling_precision_at_n": round(ceiling_precision(pool, top_n), 3),
+            "recall_of_ceiling_at_n": round(recall_of_ceiling(ranked_correct, pool, top_n), 3),
+            "ranking_fallback": any(item.get("source") == "fallback" for item in ranked),
+            # The reason matters: "quota exhausted" and "model returned garbage"
+            # look identical in a mean, and only the first is worth retrying. It
+            # was previously dropped here and had to be recovered by hand.
+            "fallback_reasons": sorted({
+                str(item["fallback_reason"]) for item in ranked
+                if item.get("fallback_reason")
+            }),
+            "fallback_count": sum(1 for item in ranked if item.get("source") == "fallback"),
+            "filled_count": sum(1 for item in ranked if item.get("source") == "filled"),
+            "strong_fit_count": sum(1 for item in ranked if item.get("fit") == "strong"),
+            "ranking_latency_ms": ranking_ms,
+        })
     return result
 
 
 def main() -> None:
     args = parse_args()
+    corpus = get_corpus(args.kind)
     cases = json.loads(args.cases.read_text(encoding="utf-8"))
     if not cases:
-        raise RuntimeError("Evaluation dataset is empty")
+        raise RuntimeError(f"Evaluation dataset {args.cases.name} is empty")
 
     client = get_client()
     case_results: list[dict | None] = [None] * len(cases)
@@ -257,20 +464,37 @@ def main() -> None:
 
     PostgresRunRepository().ensure_schema()
     with vector_store.get_connection() as conn:
-        vector_store.init_schema(conn)
-        dataset_size = vector_store.count_influencers(conn)
+        # init_schema is the CREATORS' runtime DDL. Migration 009 is the sole
+        # source of truth for prospects, so calling it here would build the wrong
+        # table and leave the one under evaluation missing.
+        if corpus.kind == "creator":
+            vector_store.init_schema(conn)
+        dataset_size = vector_store.count_records(conn, corpus.table)
         if not dataset_size:
-            raise RuntimeError("No indexed creators. Run main.py --reindex before evaluating.")
-        _warmup(conn)
+            raise RuntimeError(
+                f"No indexed {corpus.kind} records. Run "
+                f"`python main.py --kind {corpus.kind} --reindex --index-only` first."
+            )
+        _warmup(conn, corpus)
 
     started = perf_counter()
+
+    # The one decision about ranking, made before any case runs, so the
+    # per-case gate and the report gates cannot disagree. A corpus without a
+    # rubric of its own must not be scored with another corpus's rules, and
+    # --no-ranking measures the retrieval for free. It has to sit above the
+    # sequential branch too: both branches run cases, and only the concurrent
+    # one had it.
+    ranks = corpus.rubric is not None and not args.no_ranking
 
     if args.sequential:
         spacing = 60.0 / args.rate_limit_per_min
         for idx, case in enumerate(cases):
             if idx > 0:
                 time.sleep(spacing)
-            case_results[idx] = _run_case(client, case, args.top_k, args.top_n, query_cache)
+            case_results[idx] = _run_case(
+                    client, case, args.top_k, args.top_n, query_cache, corpus, ranks
+                )
     else:
         windows = batch_windows(len(cases), args.rate_limit_per_min)
         for w, window in enumerate(windows):
@@ -284,7 +508,7 @@ def main() -> None:
                 for idx in window:
                     futures[idx] = pool.submit(
                         _run_case, client, cases[idx], args.top_k, args.top_n,
-                        query_cache,
+                        query_cache, corpus, ranks,
                     )
                 for idx, future in futures.items():
                     case_results[idx] = future.result()
@@ -300,31 +524,62 @@ def main() -> None:
     report_results = [r for r in case_results if r is not None]
     total_wall = perf_counter() - started
 
+    # Split so a corpus with no rubric produces a report that omits the ranking
+    # metrics rather than one that KeyErrors on them or, worse, reports zeros
+    # that read as "scored, and scored nothing".
     summary = {
+        "ranking_skipped": None if ranks else (
+            "--no-ranking" if args.no_ranking else "the corpus has no rubric"
+        ),
         "case_count": len(report_results),
         "mean_retrieval_tag_precision_at_k": round(mean(item["retrieval_tag_precision_at_k"] for item in report_results), 3),
         "retrieval_tag_hit_rate_at_k": round(mean(item["retrieval_tag_hit_at_k"] for item in report_results), 3),
-        "mean_ranked_tag_precision_at_n": round(mean(item["ranked_tag_precision_at_n"] for item in report_results), 3),
         "mean_retrieval_tag_precision_at_n": round(mean(item["retrieval_tag_precision_at_n"] for item in report_results), 3),
-        # The reranker's contribution, and the only pair here that isolates it:
-        # identical candidates, identical cutoff, different order.
-        "mean_ranking_gain_at_n": round(mean(item["ranking_gain_at_n"] for item in report_results), 3),
-        "ranking_fallback_rate": round(mean(item["ranking_fallback"] for item in report_results), 3),
-        "total_fallback_slots": sum(item["fallback_count"] for item in report_results),
-        "total_filled_slots": sum(item["filled_count"] for item in report_results),
-        "mean_strong_fits_per_case": round(mean(item["strong_fit_count"] for item in report_results), 2),
+        # The pair that isolates the rerank, and the pair that says whether the
+        # shortlist is a campaign shortlist rather than two separate lists.
+        "mean_reranked_tag_precision_at_n": round(mean(item["reranked_tag_precision_at_n"] for item in report_results), 3),
+        "mean_retrieval_fit_precision_at_n": round(mean(item["retrieval_fit_precision_at_n"] for item in report_results), 3),
+        "mean_reranked_fit_precision_at_n": round(mean(item["reranked_fit_precision_at_n"] for item in report_results), 3),
+        "mean_retrieval_campaign_precision_at_n": round(mean(item["retrieval_campaign_precision_at_n"] for item in report_results), 3),
+        "mean_reranked_campaign_precision_at_n": round(mean(item["reranked_campaign_precision_at_n"] for item in report_results), 3),
         "mean_retrieval_latency_ms": round(mean(item["retrieval_latency_ms"] for item in report_results), 1),
         "mean_embed_latency_ms": round(mean(item["embed_latency_ms"] for item in report_results), 1),
         "mean_search_latency_ms": round(mean(item["search_latency_ms"] for item in report_results), 1),
-        "mean_ranking_latency_ms": round(mean(item["ranking_latency_ms"] for item in report_results), 1),
         "mean_topic_overlap_at_k": round(mean(item["topic_overlap_at_k"] for item in report_results), 3),
         "mean_recall_of_ceiling_at_k": round(mean(item["recall_of_ceiling_at_k"] for item in report_results), 3),
-        "mean_recall_of_ceiling_at_n": round(mean(item["recall_of_ceiling_at_n"] for item in report_results), 3),
         "mean_ceiling_precision_at_k": round(mean(item["ceiling_precision_at_k"] for item in report_results), 3),
-        "mean_ceiling_precision_at_n": round(mean(item["ceiling_precision_at_n"] for item in report_results), 3),
-        "cases_at_ceiling_at_n": sum(1 for item in report_results if item["recall_of_ceiling_at_n"] >= 1.0),
         "wall_clock_seconds": round(total_wall, 1),
     }
+
+    if ranks:
+        summary.update({
+            "mean_ranked_tag_precision_at_n": round(mean(item["ranked_tag_precision_at_n"] for item in report_results), 3),
+            # The reranker's contribution, and the only pair here that isolates it:
+            # identical candidates, identical cutoff, different order.
+            "mean_ranking_gain_at_n": round(mean(item["ranking_gain_at_n"] for item in report_results), 3),
+            "ranking_fallback_rate": round(mean(item["ranking_fallback"] for item in report_results), 3),
+            # A ranked precision computed mostly from retrieval order still looks
+            # like a result. Measured the first time on prospects: 0.886 against
+            # a 0.857 baseline looked like a reranker gain until the fallback rate
+            # beside it turned out to be 0.929 -- one case had actually run.
+            "ranking_measured": mean(item["ranking_fallback"] for item in report_results) == 0,
+            "total_fallback_slots": sum(item["fallback_count"] for item in report_results),
+            "total_filled_slots": sum(item["filled_count"] for item in report_results),
+            "mean_strong_fits_per_case": round(mean(item["strong_fit_count"] for item in report_results), 2),
+            "mean_ranking_latency_ms": round(mean(item["ranking_latency_ms"] for item in report_results), 1),
+            "mean_recall_of_ceiling_at_n": round(mean(item["recall_of_ceiling_at_n"] for item in report_results), 3),
+            "mean_ceiling_precision_at_n": round(mean(item["ceiling_precision_at_n"] for item in report_results), 3),
+            "cases_at_ceiling_at_n": sum(1 for item in report_results if item["recall_of_ceiling_at_n"] >= 1.0),
+        })
+    else:
+        # Say plainly what this suite did not measure. The corpus is balanced on
+        # industry x size tier, and relevance here is tag overlap alone -- so a
+        # reader must not mistake this report for validation of the tier balance.
+        summary["relevance_is"] = (
+            "tag overlap only. The prospects corpus is balanced on industry x size "
+            "tier, but this suite cannot see the size dimension: a case whose brief "
+            "names a headcount band would be scored on its industry tags alone."
+        )
     hard = [item for item in report_results if item["hard"]]
     if hard:
         # Reported per case, not as a mean. 
@@ -345,20 +600,45 @@ def main() -> None:
         }
 
     headline = {
+        "corpus_kind": corpus.kind,
         "dataset_size": dataset_size,
         "case_count": len(report_results),
         "mean_retrieval_tag_precision_at_k": summary["mean_retrieval_tag_precision_at_k"],
         "mean_retrieval_tag_precision_at_n": summary["mean_retrieval_tag_precision_at_n"],
-        "mean_ranked_tag_precision_at_n": summary["mean_ranked_tag_precision_at_n"],
-        "mean_ranking_gain_at_n": summary["mean_ranking_gain_at_n"],
+        "mean_reranked_tag_precision_at_n": summary["mean_reranked_tag_precision_at_n"],
+        "mean_retrieval_fit_precision_at_n": summary["mean_retrieval_fit_precision_at_n"],
+        "mean_reranked_fit_precision_at_n": summary["mean_reranked_fit_precision_at_n"],
+        "mean_retrieval_campaign_precision_at_n": summary["mean_retrieval_campaign_precision_at_n"],
+        "mean_reranked_campaign_precision_at_n": summary["mean_reranked_campaign_precision_at_n"],
         "mean_recall_of_ceiling_at_k": summary["mean_recall_of_ceiling_at_k"],
-        "mean_recall_of_ceiling_at_n": summary["mean_recall_of_ceiling_at_n"],
         "mean_topic_overlap_at_k": summary["mean_topic_overlap_at_k"],
-        "mean_strong_fits_per_case": summary["mean_strong_fits_per_case"],
-        "ranking_fallback_rate": summary["ranking_fallback_rate"],
     }
+    if ranks:
+        headline.update({
+            "mean_ranked_tag_precision_at_n": summary["mean_ranked_tag_precision_at_n"],
+            # Repeated in the headline on purpose: headline is the trimmed view
+            # people quote, and a ranked number with a fallback beside it is easy
+            # to read as a gain and impossible to unsee later.
+            "ranking_measured": summary["ranking_measured"],
+            "mean_ranking_gain_at_n": summary["mean_ranking_gain_at_n"],
+            "mean_recall_of_ceiling_at_n": summary["mean_recall_of_ceiling_at_n"],
+            "mean_strong_fits_per_case": summary["mean_strong_fits_per_case"],
+            "ranking_fallback_rate": summary["ranking_fallback_rate"],
+        })
+    # Why the ranking metrics are absent, when they are. The headline is the
+    # trimmed view people quote, and a headline with no ranking numbers should
+    # say they were not measured rather than leave it implied.
+    headline["ranking_skipped"] = None if ranks else (
+        "--no-ranking" if args.no_ranking else "the corpus has no rubric"
+    )
 
     report = {
+        "corpus_kind": corpus.kind,
+        # Why there are no ranking metrics, when there are none. Without this a
+        # skipped run is indistinguishable from a corpus that has no rubric.
+        "ranking_skipped": None if ranks else (
+            "--no-ranking" if args.no_ranking else "the corpus has no rubric"
+        ),
         "embedding_model": config.EMBED_MODEL,
         "embed_dimensions": config.EMBED_DIMENSIONS,
         "dataset_size": dataset_size,
@@ -375,7 +655,10 @@ def main() -> None:
         "summary": summary,
     }
 
-    output = args.output or REPORTS_DIR / f"evaluation-{dataset_size}.json"
+    # Named for BOTH corpus and size. A creator run at 2000 and a prospect run at
+    # 500 are different measurements, and a filename carrying only the row count
+    # makes them collide the day both are 2000.
+    output = args.output or REPORTS_DIR / f"evaluation-{corpus.kind}-{dataset_size}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["headline"], indent=2))

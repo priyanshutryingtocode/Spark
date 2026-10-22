@@ -10,7 +10,7 @@ from src import config
 
 
 class AuthRepository:
-    def list(self, limit, cursor=None, owner_id=None):
+    def list(self, limit, cursor=None, owner_id=None, kind=None):
         return [], None
 
     def ensure_schema(self):
@@ -18,7 +18,7 @@ class AuthRepository:
 
 
 class AuthJobManager:
-    def submit(self, brief, params, owner_id=None):
+    def submit(self, brief, params, owner_id=None, corpus=None):
         return None
 
     def get(self, job_id, owner_id=None):

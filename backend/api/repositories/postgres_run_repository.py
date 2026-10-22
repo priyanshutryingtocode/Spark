@@ -8,6 +8,7 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 from src import vector_store
+from src.corpora import DEFAULT_KIND as DEFAULT_RUN_KIND
 
 
 class InvalidCursor(ValueError):
@@ -21,6 +22,11 @@ class PostgresRunRepository:
     def ensure_schema(self) -> None:
         migration_dir = Path(__file__).resolve().parents[2] / "migrations"
         with self._connection_factory() as conn:
+            # The creator account table is the referenced base for migrations
+            # that add source, identity, and observation tables. Initialize it
+            # before replaying migrations; company tables are created by their
+            # own earlier migrations in that same sequence.
+            vector_store.init_schema(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -49,14 +55,18 @@ class PostgresRunRepository:
             row = conn.execute(
                 """
                 INSERT INTO match_runs
-                    (id, owner_id, brief, params, result, warnings, summary)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, owner_id, brief, params, result, warnings, summary,
+                    (id, owner_id, kind, brief, params, result, warnings, summary)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, owner_id, kind, brief, params, result, warnings, summary,
                           created_at, updated_at
                 """,
                 (
                     record["id"],
                     owner,
+                    # Defaulted rather than required: a record built before the
+                    # two panels existed carries no kind, and the column default
+                    # is the same 'creator' the summary would report.
+                    record.get("kind", DEFAULT_RUN_KIND),
                     Jsonb(record["brief"]),
                     Jsonb(record["params"]),
                     Jsonb(record["result"]),
@@ -66,13 +76,24 @@ class PostgresRunRepository:
             ).fetchone()
         return _record_from_row(row)
 
-    def list(self, limit: int, cursor: str | None = None, owner_id=None) -> tuple[list[dict], str | None]:
+    def list(
+        self,
+        limit: int,
+        cursor: str | None = None,
+        owner_id=None,
+        kind: str | None = None,
+    ) -> tuple[list[dict], str | None]:
         conditions: list[str] = []
         params: list[Any] = []
         owner = _as_uuid(owner_id)
         if owner is not None:
             conditions.append("owner_id = %s")
             params.append(owner)
+        # None means "every corpus", which is what an unfiltered caller wants.
+        # The two panels always pass one, so neither ever sees the other's runs.
+        if kind is not None:
+            conditions.append("kind = %s")
+            params.append(kind)
         if cursor:
             created_at, run_id = _decode_cursor(cursor)
             conditions.append("(created_at < %s OR (created_at = %s AND id < %s))")
@@ -82,7 +103,7 @@ class PostgresRunRepository:
         with self._connection_factory() as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, created_at, brief, warnings, summary
+                SELECT id, created_at, kind, brief, warnings, summary
                 FROM match_runs
                 {where}
                 ORDER BY created_at DESC, id DESC
@@ -97,9 +118,13 @@ class PostgresRunRepository:
             {
                 "id": row[0],
                 "created_at": row[1],
-                "brief": row[2],
-                "warnings": row[3],
-                "summary": row[4],
+                # Defaults rather than indexing blindly: the SELECT order here
+                # differs from `get`, so a shared positional reader would be a
+                # silent mismatch waiting to happen.
+                "kind": row[2],
+                "brief": row[3],
+                "warnings": row[4],
+                "summary": row[5],
             }
             for row in visible
         ], next_cursor
@@ -114,7 +139,7 @@ class PostgresRunRepository:
         with self._connection_factory() as conn:
             row = conn.execute(
                 f"""
-                SELECT id, owner_id, brief, params, result, warnings, summary,
+                SELECT id, owner_id, kind, brief, params, result, warnings, summary,
                        created_at, updated_at
                 FROM match_runs
                 WHERE {where}
@@ -142,13 +167,17 @@ def _record_from_row(row) -> dict:
     return {
         "id": row[0],
         "owner_id": row[1],
-        "brief": row[2],
-        "params": row[3],
-        "result": row[4],
-        "warnings": row[5],
-        "summary": row[6],
-        "created_at": row[7],
-        "updated_at": row[8],
+        # The column is NOT NULL, so row[2] is always present once migration 010
+        # has run. The fallback is for a row read before it, which is the same
+        # reason the column defaults to 'creator'.
+        "kind": row[2] or DEFAULT_RUN_KIND,
+        "brief": row[3],
+        "params": row[4],
+        "result": row[5],
+        "warnings": row[6],
+        "summary": row[7],
+        "created_at": row[8],
+        "updated_at": row[9],
     }
 
 

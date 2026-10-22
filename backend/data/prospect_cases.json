@@ -1,0 +1,250 @@
+[
+  {
+    "id": "saas-tooling-consolidation-hard",
+    "goal": "software that removes repetitive busywork and links the systems a team already pays for",
+    "expected_tags": [
+      "saas",
+      "workflow",
+      "integration"
+    ],
+    "hard": true,
+    "note": "HARD: 'busywork' is not 'workflow', 'links' is not 'integration', 'software' is not 'saas'.",
+    "expected_icp": {
+      "industries": [
+        "B2B SaaS"
+      ],
+      "size": [
+        11,
+        5000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Germany"
+      ]
+    }
+  },
+  {
+    "id": "fintech-merchant-payments",
+    "goal": "payment processing and fraud prevention for online merchants",
+    "expected_tags": [
+      "payments",
+      "fraud",
+      "invoicing"
+    ],
+    "note": "Three payment-adjacent tags from one vertical, so the pool is the union of a coherent set.",
+    "expected_icp": {
+      "industries": [
+        "fintech"
+      ],
+      "size": [
+        11,
+        1000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "India"
+      ]
+    }
+  },
+  {
+    "id": "healthtech-equipment-hard",
+    "goal": "imaging equipment supply for hospitals plus software that records patient visits",
+    "expected_tags": [
+      "devices",
+      "ehr",
+      "care"
+    ],
+    "hard": true,
+    "note": "HARD: avoids 'clinical', 'diagnostics' and 'telehealth' entirely.",
+    "expected_icp": {
+      "industries": [
+        "healthtech"
+      ],
+      "size": [
+        51,
+        5000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Germany"
+      ]
+    }
+  },
+  {
+    "id": "ecommerce-subscription-box",
+    "goal": "subscription box logistics and direct-to-consumer fulfilment",
+    "expected_tags": [
+      "ecommerce",
+      "subscriptions",
+      "fulfilment"
+    ],
+    "note": "Spells out the direct-to-consumer idea as its tag.",
+    "expected_icp": {
+      "industries": [
+        "e-commerce",
+        "retail",
+        "consumer goods"
+      ],
+      "size": [
+        2,
+        500
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Germany"
+      ]
+    }
+  },
+  {
+    "id": "logistics-fleet-routing",
+    "goal": "fleet routing and warehouse management for freight operators",
+    "expected_tags": [
+      "freight",
+      "fleet",
+      "warehouse"
+    ],
+    "note": "freight/fleet/warehouse is the densest coherent pool in the vertical.",
+    "expected_icp": {
+      "industries": [
+        "logistics"
+      ],
+      "size": [
+        51,
+        5000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Germany",
+        "Thailand"
+      ]
+    }
+  },
+  {
+    "id": "logistics-cross-border-hard",
+    "goal": "moving pallets across borders and optimising the journeys hauliers make every week",
+    "expected_tags": [
+      "freight",
+      "routing",
+      "customs"
+    ],
+    "hard": true,
+    "note": "HARD: freight/routing/customs never appear. A retriever matching only literal words cannot pass this one.",
+    "expected_icp": {
+      "industries": [
+        "logistics"
+      ],
+      "size": [
+        51,
+        5000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Germany"
+      ]
+    }
+  },
+  {
+    "id": "construction-permits",
+    "goal": "permitting and contractor management for commercial builders",
+    "expected_tags": [
+      "permits",
+      "contractors",
+      "construction"
+    ],
+    "note": "contractors is one of the thinnest tags (17 of 500); the pool stays healthy because the three are a union.",
+    "expected_icp": {
+      "industries": [
+        "construction"
+      ],
+      "size": [
+        2,
+        1000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Spain"
+      ]
+    }
+  },
+  {
+    "id": "services-billing-audit",
+    "goal": "billing and audit tooling for accounting firms",
+    "expected_tags": [
+      "billing",
+      "audit",
+      "accounting"
+    ],
+    "note": "accounting spans fintech and professional services, so it only works here alongside two tags unique to one.",
+    "expected_icp": {
+      "industries": [
+        "accounting services",
+        "consulting"
+      ],
+      "size": [
+        2,
+        200
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "India"
+      ]
+    }
+  },
+  {
+    "id": "edtech-corporate-learning",
+    "goal": "corporate learning management with certification and course completion tracking",
+    "expected_tags": [
+      "learning",
+      "certification",
+      "courses"
+    ],
+    "note": "edtech is the smallest vertical by group share, so this pins its reachability.",
+    "expected_icp": {
+      "industries": [
+        "education technology",
+        "corporate training",
+        "edtech platform"
+      ],
+      "size": [
+        2,
+        500
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "India"
+      ]
+    }
+  },
+  {
+    "id": "cross-vertical-reconciliation",
+    "goal": "audit and reconciliation tooling for finance teams who run online marketplaces",
+    "expected_tags": [
+      "accounting",
+      "audit",
+      "marketplace"
+    ],
+    "note": "Genuinely cross-vertical on purpose: a brief that does not respect the taxonomy the corpus is grouped by.",
+    "expected_icp": {
+      "industries": [],
+      "size": [
+        51,
+        5000
+      ],
+      "countries": [
+        "USA",
+        "UK",
+        "Germany",
+        "India"
+      ]
+    }
+  }
+]

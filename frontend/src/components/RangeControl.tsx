@@ -5,9 +5,14 @@ interface RangeControlProps {
   min: number;
   max: number;
   onChange: (value: number) => void;
+  /** Plural noun for the aria-valuetext. Defaults to the creator panel's, which
+   *  is only right because every existing caller is the creator panel -- an
+   *  omitted noun on the Companies panel would announce "10 creators" on a
+   *  control that is choosing companies. */
+  noun?: string;
 }
 
-export function RangeControl({ id, label, value, min, max, onChange }: RangeControlProps) {
+export function RangeControl({ id, label, value, min, max, onChange, noun = "creators" }: RangeControlProps) {
   const labelId = `${id}-label`;
   return (
     <label className="range-control" htmlFor={id}>
@@ -23,7 +28,7 @@ export function RangeControl({ id, label, value, min, max, onChange }: RangeCont
         max={max}
         value={value}
         aria-labelledby={labelId}
-        aria-valuetext={`${value} creators`}
+        aria-valuetext={`${value} ${noun}`}
         onChange={(event) => onChange(Number(event.target.value))}
       />
     </label>

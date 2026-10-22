@@ -10,7 +10,8 @@ import pytest
 from google.genai import errors as genai_errors
 
 from src import config, ranking
-from src.models import Brief, Influencer
+from src.corpora import Influencer
+from src.models import Brief
 
 
 @pytest.fixture(autouse=True)

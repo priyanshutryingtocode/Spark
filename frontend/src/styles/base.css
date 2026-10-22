@@ -1,13 +1,60 @@
 /* Element defaults. Layered below components so a component rule wins no
    matter which file the competing rule lives in. */
 
-* { box-sizing: border-box; }
+/* The universal selector does not match pseudo-elements, so `*` alone leaves
+ * them on the initial `content-box`. That is not academic: the panel switch's
+ * sliding indicator is a ::after with a width and a 1px border, and on
+ * content-box its border-box was 2px wider than the segment it was meant to
+ * fill -- and `translateX(100%)` moves an element by its border-box, so it
+ * also landed 2px past where it belonged, running into the switch's edge.
+ * The summary chevron and the account caret were off by their borders too. */
+*, *::before, *::after { box-sizing: border-box; }
 html { background: var(--canvas); }
 /* Nothing set a leading, so all body copy inherited the browser default of
    roughly 1.2 -- tight for anything that wraps. Headings set their own. */
-body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--canvas); color: var(--text); line-height: 1.5; }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--text);
+  line-height: 1.5;
+  /* Subpixel antialiasing on a near-black ground is muddy: the subpixel bands
+     are sized for a light background and fringe the text blue. This is the
+     standard setting for a dark interface. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* The browser's default selection is a saturated blue that fights the accent
+     and reads as a browser default rather than as part of the product. */
+  ::selection { background: var(--signal-soft); color: var(--text); }
+  /* The default scrollbar is a bright chunky Windows widget that would be the
+     loudest thing on the page. Thin and tinted to the surface ramp. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: var(--radius-pill); background: var(--rule-strong); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: var(--signal); text-decoration: none; }
 a:hover { color: var(--signal-hover); }
 button { color: inherit; }
+
+/* Prose wraps without a rag: the browser's greedy line-breaking leaves a
+   one-word last line on headings often enough to read as a mistake. `balance`
+   evens the lines; `pretty` on body copy avoids a single orphan word. */
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+/* Placeholders are the browser's default mid-grey, which on this ramp is
+   lighter than the secondary text they sit beside. */
+::placeholder { color: var(--muted); opacity: .72; }
+
+/* Form controls take the accent, not the browser's own blue, so a checked
+   checkbox or a radio belongs to the same palette as everything else. */
+input[type="checkbox"], input[type="radio"], input[type="range"], input[type="progress"] {
+  accent-color: var(--signal);
+}

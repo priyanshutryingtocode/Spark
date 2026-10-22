@@ -2,19 +2,53 @@
 
 .history-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-9); align-items: start; }
 .history-ledger { min-width: 0; }
-.history-list { display: grid; gap: 1px; border-top: 1px solid var(--rule); }
-.history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-bottom: 1px solid var(--rule); }
-.history-row-active { border-left: 2px solid var(--signal); padding-left: var(--space-4); background: var(--signal-soft); }
-.history-open { display: grid; gap: var(--space-2); min-width: 0; padding: var(--space-4) var(--space-4) var(--space-4) 0; border: 0; color: var(--text); text-align: left; background: transparent; cursor: pointer; }
-.history-open:hover { background: var(--surface-soft); }
-.history-date { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-2xs); }
-.history-open strong { overflow-wrap: anywhere; font-size: var(--text-xs); }
-.history-open strong span { color: var(--signal-dim); }
+/* A ledger is a list, not a stack of cards. The rows used to be separate
+   bordered boxes with a gap between them, which read as five disconnected
+   objects rather than one column of records. They are separated by a hairline
+   now, and the open run is marked the way a result row is: an accent bar down
+   its left edge. */
+.history-list { display: grid; gap: 0; padding-top: var(--space-2); }
+.history-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-bottom: 1px solid var(--rule);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease);
+}
+.history-row:last-child { border-bottom: 0; }
+.history-row:hover { background: var(--surface); }
+.history-row-active { background: var(--signal-soft); }
+.history-row-active::before { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--signal); content: ""; }
+/* The padding's last value is the left one, and it was zero -- so the date and
+   the goal started flush against the card's border with no breathing room. */
+.history-open { display: grid; gap: var(--space-1); min-width: 0; padding: var(--space-4); border: 0; color: var(--text); text-align: left; background: transparent; cursor: pointer; }
+/* The goal is the scan target, so it leads the row and is the largest thing in
+   it. Clamped to two lines, because a goal that wraps to three makes one row
+   twice the height of the next and the column reads as ragged. The full text is
+   in the title attribute, so nothing is unreachable. */
+.history-goal {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .history-meta { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-2xs); }
-.history-meta i { width: 3px; height: 3px; border-radius: 50%; background: var(--rule-strong); }
+.history-date { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-2xs); }
+.history-meta i { width: 3px; height: 3px; flex: 0 0 auto; border-radius: 50%; background: var(--rule-strong); }
 .history-meta b { margin-left: var(--space-2); color: var(--warning); font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; }
-.delete-button { align-self: center; margin: var(--space-2); font-size: var(--text-2xs); }
-.empty-ledger { display: grid; gap: var(--space-2); border-bottom: 1px solid var(--rule); }
+/* The icon alone. It used to carry the word "Delete" as well, which was two
+   glyphs for one action and took about 70px of a 340px column -- enough to push
+   the goal onto a second line for most briefs. The accessible name is
+   unchanged; only the visible redundancy is gone. */
+.delete-button { align-self: center; margin: var(--space-2) var(--space-3) var(--space-2) 0; padding: 0 var(--space-2); color: var(--muted); }
+.delete-button:hover { color: var(--danger); }
+.empty-ledger { display: grid; gap: var(--space-2); }
 .empty-ledger p { margin: 0; }
 .empty-ledger a { font-size: var(--text-xs); }
 .empty-ledger { padding: var(--space-4) 0; color: var(--muted); }

@@ -4,7 +4,8 @@ from uuid import uuid4
 
 from api.serialization import build_run_record
 from api.services.compare_service import compare_runs, summarize_run
-from src.models import Brief, Influencer
+from src.corpora import Influencer
+from src.models import Brief
 
 
 def make_influencer(id_: int, tags: list[str] | None = None) -> Influencer:
@@ -76,12 +77,12 @@ def test_summary_counts_and_denominator_use_the_same_result_set():
     assert summary["n_weak"] == 1
 
 
-def test_shared_creators_only_counts_ranked_results():
+def test_shared_only_counts_ranked_results():
     run_a = make_run(["strong"], [["gym"], ["mindfulness"]])
     run_b = make_run(["strong"], [["mindfulness"], ["gym"]])
     comparison = compare_runs(run_a, run_b)
-    assert comparison["shared_creators"] == [
-        {"id": 0, "creator_key": "Instagram:@c0", "handle": "@c0"}
+    assert comparison["shared"] == [
+        {"id": 0, "creator_key": "Instagram:@c0", "label": "@c0"}
     ]
 
 
@@ -93,13 +94,13 @@ def test_legacy_creator_keys_compare_with_normalized_keys():
         entry["creator_key"] = entry["id"]
     current = make_run(["strong"], [["gym"]])
     comparison = compare_runs(legacy, current)
-    assert comparison["shared_creators"][0]["creator_key"] == "Instagram:@c0"
+    assert comparison["shared"][0]["creator_key"] == "Instagram:@c0"
 
 
 def test_compare_runs_shape():
     run_a = make_run(["strong", "partial"], [["gym"], ["mindfulness"]])
     run_b = make_run(["partial", "strong"], [["mindfulness"], ["gym"]])
     comparison = compare_runs(run_a, run_b)
-    assert len(comparison["shared_creators"]) == 2
+    assert len(comparison["shared"]) == 2
     assert comparison["summary_a"]["n_strong"] == 1
     assert comparison["summary_b"]["n_strong"] == 1

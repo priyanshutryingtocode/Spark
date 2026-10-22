@@ -18,8 +18,8 @@ from pathlib import Path
 import numpy as np
 
 from . import config
+from .corpora import Influencer
 from .gemini_client import embed_content_throttled, get_client
-from .models import Influencer
 
 BATCH_SIZE = 50
 
@@ -235,34 +235,37 @@ class EmbeddingCache:
         return len(self._vectors)
 
 
-def index_influencers(
-    influencers: list[Influencer],
+def index_records(
+    records: list[Influencer],
     cache: EmbeddingCache | None = None,
 ) -> None:
-    """Populate the .embedding field on every influencer, in this process.
+    """Populate the .embedding field on every record, in this process.
 
-    Vectors are persisted to Postgres/pgvector by vector_store.replace_influencers,
+    Corpus-generic already: the only thing it needs from a record is
+    `corpus_text()`, so a second corpus works without a branch here.
+
+    Vectors are persisted to Postgres/pgvector by vector_store.replace_records,
     so this only runs on generation/reindex, not on every query. When a cache is
     supplied, already-embedded texts are reused and only the misses are billed.
     """
     done = 0
     pending: list[tuple[Influencer, str]] = []
-    for influencer in influencers:
-        text = influencer.corpus_text()
+    for record in records:
+        text = record.corpus_text()
         key = text_key(text)
         vector = cache.get(key) if cache is not None else None
         if vector is None:
-            pending.append((influencer, text))
+            pending.append((record, text))
         else:
-            influencer.embedding = vector
+            record.embedding = vector
             done += 1
 
     for start in range(0, len(pending), BATCH_SIZE):
         batch = pending[start:start + BATCH_SIZE]
         vectors = embed_documents([text for _, text in batch])
-        for (influencer, _), vec in zip(batch, vectors):
-            influencer.embedding = vec
+        for (record, _), vec in zip(batch, vectors):
+            record.embedding = vec
         if cache is not None:
             cache.put_many([(text_key(text), vec) for (_, text), vec in zip(batch, vectors)])
         done += len(batch)
-        print(f"  embedded {done}/{len(influencers)}", flush=True)
+        print(f"  embedded {done}/{len(records)}", flush=True)

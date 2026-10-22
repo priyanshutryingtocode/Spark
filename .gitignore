@@ -11,4 +11,6 @@ frontend/.vite/
 backend/.embed-cache/
 frontend/.env.local
 backend/reports/*.json
-!backend/reports/evaluation-tag-precision-*.json
+!backend/reports/evaluation-creator-*.json
+!backend/reports/evaluation-prospect-*.json
+backend/DATA_MODEL.md

@@ -5,7 +5,7 @@ to a human: which of the brief's own words appear in the profile text the
 creator's embedding was built from.
 """
 
-from src.models import Influencer
+from src.corpora import Influencer
 from src.text_match import overlap_ratio, shared_terms, terms
 
 

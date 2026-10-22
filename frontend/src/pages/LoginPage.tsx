@@ -9,9 +9,9 @@ type AuthMode = "signin" | "signup";
 
 const minimumPasswordLength = 8;
 
-export function LoginPage() {
+export function LoginPage({ initialMode = "signin" }: { initialMode?: AuthMode }) {
   const { session, isConfigured, signInWithPassword, signUp } = useAuth();
-  const [mode, setMode] = useState<AuthMode>("signin");
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +20,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (session) return <Navigate to="/search" replace />;
+  if (session) return <Navigate to="/creators/search" replace />;
 
   function changeMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -72,7 +72,7 @@ export function LoginPage() {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <p className="eyebrow">Influencer Matcher</p>
+        <p className="eyebrow">Spark</p>
         <h1>{mode === "signin" ? "Sign in." : "Create your account."}</h1>
         <p className="page-description">
           {mode === "signin" ? "Use the email and password for your account." : "Your account and run history are unique per user ID."}

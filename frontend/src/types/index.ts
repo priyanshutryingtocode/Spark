@@ -7,6 +7,18 @@ export interface Brief {
   platform: string;
   audience: string;
   vibe: string;
+  /** Structured, optional. The free-text fields above still drive the embedding;
+   *  these drive the filters and the rerank. Each corpus reads only its own. */
+  audience_age?: string[];
+  audience_gender?: string;
+  audience_countries?: string[];
+  languages?: string[];
+  min_reach_ratio?: number;
+  target_industries?: string[];
+  target_size?: [number, number] | null;
+  target_countries?: string[];
+  budget_band?: string;
+  buyer_roles?: string[];
 }
 
 export interface MatchParams {
@@ -23,14 +35,22 @@ export interface MatchJob {
   error: string | null;
 }
 
+/** Which searchable corpus a screen, run or candidate belongs to. Mirrors the
+ *  backend's `CorpusKind`; the two are checked against each other in the backend
+ *  suite rather than kept in sync by hand here. */
+export type CorpusKind = "creator" | "prospect";
+
 export interface Grounding {
-  /** Key of a profile field on the stored creator. */
+  /** Key of a profile field on the stored record. */
   field: string;
   quote: string;
 }
 
 export interface CreatorSnapshot {
   id: number;
+  /** Why this record matched the brief's structured fields. Empty when the brief
+   *  asked for nothing structured, which is not a failure. */
+  match_reasons?: string[];
   creator_key: string;
   handle: string;
   name: string;
@@ -52,14 +72,55 @@ export interface CreatorSnapshot {
   audience_top_countries: string[];
 }
 
-export interface RankedCreator {
+/** A company as stored on a run.
+ *
+ *  Deliberately a separate shape rather than an extension of CreatorSnapshot.
+ *  They share three fields (`id`, `creator_key`, `tags`) and almost nothing
+ *  else: a company has no followers, engagement or reach, and a creator has no
+ *  headcount or funding stage. A common base would be three fields wide and
+ *  would not stop a caller reading `candidate.followers` off a company.
+ */
+export interface ProspectSnapshot {
+  id: number;
+  match_reasons?: string[];
+  creator_key: string;
+  name: string;
+  industry: string;
+  headcount: number;
+  city: string;
+  country: string;
+  description: string;
+  website: string;
+  founded_year: number;
+  funding_stage: string;
+  tags: string[];
+  similarity: number | null;
+  /** Inferred signals, parallel to a creator's content_style/audience_*. */
+  seniority_mix: string;
+  department_mix: string[];
+  tech_stack: string[];
+  buying_signals: string[];
+  growth_trend: string;
+  growth_rate: number;
+  hiring_intensity: number;
+  top_markets: string[];
+}
+
+/** One ranked row from either corpus.
+ *
+ *  Renamed from `RankedCreator` when the second corpus arrived, matching the
+ *  backend's `RankedEntry`. `evidence` is optional because it is per-field
+ *  verification against brief signals, and a company run has no such list -- the
+ *  server omits the key rather than sending an empty one that would read as
+ *  "every claim was checked and unsupported". */
+export interface RankedEntry {
   id: number;
   creator_key: string;
   rank: number;
   fit: FitLevel;
   source: RankingSource;
   rationale: string;
-  evidence: string[];
+  evidence?: string[];
   /** Citations the server verified against the stored profile. */
   grounding: Grounding[];
   /** Why the model did not rank this entry. Prefixed with "daily_quota:" when
@@ -75,19 +136,41 @@ export interface Warning {
   details: Record<string, unknown>;
 }
 
+/** One summary number as displayed. `key` names the stored value it came from,
+ *  which is not always a single value -- Quality is a ratio of two. */
+export interface SummaryCell {
+  key: string;
+  label: string;
+  caption: string;
+  value: string;
+  primary?: boolean;
+  explanation?: string;
+}
+
 export interface RunSummary {
+  /** Which corpus produced this summary. */
+  kind?: string;
+  /** Authoritative for display: each cell carries its own label and caption.
+   *  Absent on summaries stored before cells existed, so the UI falls back to
+   *  the flat keys below. */
+  cells?: SummaryCell[];
   n_results: number;
   avg_match_pct: number;
   n_strong: number;
   n_weak: number;
-  avg_engagement_pct: number;
-  median_followers: number;
+  /** Creator-only. A company has no engagement rate, so it is absent rather
+   *  than zero -- a 0.0 would read as "measured, and measured nothing". */
+  avg_engagement_pct?: number | null;
+  median_followers?: number | null;
+  /** Prospect-only: the scale dimension that replaces follower count. */
+  median_headcount?: number | null;
 }
 
 export interface RunListItem {
   run_id: string;
   created_at: string;
   brief: Brief;
+  kind: CorpusKind;
   n_results: number;
   n_strong: number;
   has_warnings: boolean;
@@ -104,14 +187,20 @@ export interface RunDetail {
   brief: Brief;
   warnings: Warning[];
   summary: RunSummary;
-  candidates: CreatorSnapshot[];
-  ranked: RankedCreator[];
+  /** Which corpus this run searched. Read this before touching `candidates` --
+   *  they are a union, and `kind` is what says which arm is in hand. */
+  kind: CorpusKind;
+  candidates: Array<CreatorSnapshot | ProspectSnapshot>;
+  ranked: RankedEntry[];
 }
 
 export interface Comparison {
   summary_a: RunSummary;
   summary_b: RunSummary;
-  shared_creators: Array<{ id: number; creator_key: string; handle: string }>;
+  /** Renamed from `shared_creators`: a company is not a creator. `label` is the
+   *  display name the server chose -- a creator's handle or a company's name --
+   *  so the client never has to branch to label the overlap. */
+  shared: Array<{ id: number; creator_key: string; label: string }>;
 }
 
 export interface Meta {

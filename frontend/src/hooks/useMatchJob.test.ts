@@ -42,7 +42,7 @@ const POLL_BUDGET = { timeout: 5_000 };
  *  terminal. Tests therefore start it without awaiting and assert on state. */
 async function launch(result: { current: ReturnType<typeof useMatchJob> }, params = { top_k: 10, top_n: 5 }) {
   await act(async () => {
-    void result.current.start(brief, params);
+    void result.current.start(brief, params, "creator");
   });
 }
 
@@ -170,7 +170,7 @@ describe("useMatchJob", () => {
     await launch(result);
     await waitFor(() => expect(apiMocks.getMatchJob).toHaveBeenCalled(), POLL_BUDGET);
 
-    const post = apiMocks.createMatchJob.mock.calls[0][2] as { signal?: AbortSignal } | undefined;
+    const post = apiMocks.createMatchJob.mock.calls[0][3] as { signal?: AbortSignal } | undefined;
     const poll = apiMocks.getMatchJob.mock.calls[0][1] as { signal?: AbortSignal } | undefined;
     expect(post?.signal).toBeInstanceOf(AbortSignal);
     expect(poll?.signal).toBeInstanceOf(AbortSignal);

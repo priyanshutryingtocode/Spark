@@ -6,7 +6,8 @@ import pytest
 
 from api.serialization import build_run_record, run_detail
 from api.services.csv_export import build_csv
-from src.models import Brief, Influencer
+from src.corpora import Influencer
+from src.models import Brief
 
 
 def make_influencer(id_: int, **overrides) -> Influencer:
@@ -194,11 +195,9 @@ def test_quota_and_outage_warnings_say_different_things():
     """
     from src.ranking import QUOTA_REASON_TAG
 
-    run = make_run(n=1)
     ranked_quota = [{"source": "fallback",
                      "fallback_reason": f"{QUOTA_REASON_TAG}: exhausted its daily free-tier quota"}]
     ranked_outage = [{"source": "fallback", "fallback_reason": "APIError: 500"}]
-    brief = run["brief"]
 
     from api.serialization import build_warnings
 
@@ -224,7 +223,6 @@ def test_a_quota_fallback_is_still_an_error_severity():
     from src.ranking import QUOTA_REASON_TAG
     from api.serialization import build_warnings
 
-    run = make_run(n=1)
     warning = build_warnings(
         [{"source": "fallback", "fallback_reason": f"{QUOTA_REASON_TAG}: spent"}]
     )[0]
@@ -242,11 +240,11 @@ def test_row_mapping_matches_the_column_order_the_repository_selects():
     from api.repositories.postgres_run_repository import _record_from_row
 
     columns = [
-        "id", "owner_id", "brief", "params", "result", "warnings",
+        "id", "owner_id", "kind", "brief", "params", "result", "warnings",
         "summary", "created_at", "updated_at",
     ]
     sentinels = {
-        "id": "ID", "owner_id": "OWNER", "brief": {"goal": "g"},
+        "id": "ID", "owner_id": "OWNER", "kind": "creator", "brief": {"goal": "g"},
         "params": {"top_k": 10}, "result": {"candidates": [], "ranked": []},
         "warnings": [{"code": "w"}], "summary": {"n_results": 1},
         "created_at": "CREATED", "updated_at": "UPDATED",

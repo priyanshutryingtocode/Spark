@@ -47,6 +47,7 @@ def make_args(tmp_path, **overrides):
         limit=3,
         embed_cache=tmp_path / "vectors.jsonl",
         no_embed_cache=False,
+        kind="creator",
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -67,14 +68,14 @@ def test_limit_with_index_only_never_writes(tmp_path, monkeypatch, capsys):
     `--limit` is documented as writing nothing, but the guard used to read
     `bool(args.limit) and not args.index_only`, so passing `--index-only`
     alongside it flipped the guard to False and the run proceeded to
-    replace_influencers() -- TRUNCATE plus insert N rows. On a shared database
+    replace_records() -- TRUNCATE plus insert N rows. On a shared database
     that is `--limit 5 --index-only` silently destroying an indexed corpus.
 
     The `no_database` fixture raises on any connection attempt, so reaching the
     write at all fails this test.
     """
     args = make_args(tmp_path, limit=3, index_only=True)
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
 
     main.ensure_indexed(args)
     captured = capsys.readouterr()
@@ -85,7 +86,7 @@ def test_limit_with_index_only_never_writes(tmp_path, monkeypatch, capsys):
 
 def test_limit_alone_still_reports_the_smoke_test(tmp_path, monkeypatch, capsys):
     args = make_args(tmp_path, limit=3, index_only=False)
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
 
     main.ensure_indexed(args)
     captured = capsys.readouterr()
@@ -100,7 +101,7 @@ def test_preflight_reports_reuse_and_remaining_requests(tmp_path, monkeypatch, c
     cache = EmbeddingCache(args.embed_cache)
     bank(cache, influencers, 2)
 
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
     main.ensure_indexed(args)
     captured = capsys.readouterr()
 
@@ -122,7 +123,7 @@ def test_preflight_treats_a_multi_day_build_as_progress_not_mistake(tmp_path, mo
     ])
     bank(cache, influencers, 100)
 
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
     main.ensure_indexed(args)
     captured = capsys.readouterr()
 
@@ -136,14 +137,13 @@ def test_preflight_warns_when_the_corpus_does_not_match_the_cache(tmp_path, monk
     # A corpus switch: the cache belongs to another dataset, so almost none of
     # it is usable and every entry is about to be wasted.
     args = make_args(tmp_path)
-    influencers = generate_influencers(count=args.count)
     cache = EmbeddingCache(args.embed_cache)
     cache.put_many([
         (f"unrelated-{index}", np.full(config.EMBED_DIMENSIONS, 0.3, dtype=np.float32))
         for index in range(60)
     ])
 
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
     main.ensure_indexed(args)
     captured = capsys.readouterr()
 
@@ -164,7 +164,7 @@ def test_preflight_warns_once_at_the_start_of_a_deliberate_corpus_switch(tmp_pat
         for index in range(100)
     ])
 
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
     main.ensure_indexed(args)
     assert "WARNING" in capsys.readouterr().err
 
@@ -176,7 +176,7 @@ def test_preflight_warns_once_at_the_start_of_a_deliberate_corpus_switch(tmp_pat
 
 def test_no_cache_reports_the_full_spend(tmp_path, monkeypatch, capsys):
     args = make_args(tmp_path, no_embed_cache=True)
-    monkeypatch.setattr(main, "index_influencers", lambda profiles, cache=None: None)
+    monkeypatch.setattr(main, "index_records", lambda profiles, cache=None: None)
 
     main.ensure_indexed(args)
     out = capsys.readouterr().out
@@ -193,7 +193,7 @@ def test_daily_cap_exits_cleanly_with_a_resume_report(tmp_path, monkeypatch, cap
     def explode(profiles, cache=None):
         raise DailyQuotaExhausted("embed_content(gemini-embedding-001)", "SomePerDayQuota", 1000)
 
-    monkeypatch.setattr(main, "index_influencers", explode)
+    monkeypatch.setattr(main, "index_records", explode)
 
     with pytest.raises(SystemExit) as exit_info:
         main.ensure_indexed(args)

@@ -1,7 +1,8 @@
 """Tests for src.formatting display helpers."""
 
 from src.formatting import format_followers, match_evidence
-from src.models import Brief, Influencer
+from src.corpora import Influencer
+from src.models import Brief
 
 
 def make_influencer(id_=1, tags=None, bio=""):

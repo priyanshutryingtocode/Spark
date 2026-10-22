@@ -1,14 +1,10 @@
 import { useId, useState } from "react";
 
 import type { RunSummary } from "../types";
+import { Icon } from "./Icon";
+import { SIMILARITY_EXPLANATION, formatCount } from "./resultShared";
 
-export const SIMILARITY_EXPLANATION =
-  "Mean cosine similarity between the brief's embedding and each shortlisted "
-  + "creator's. This is an embedding distance, not a fit score: it is useful for "
-  + "comparing one brief against another, but it does not reliably rank creators "
-  + "within a single shortlist. Use the strong-fit count for that.";
-
-interface MetricCell {
+interface Cell {
   label: string;
   value: string;
   caption: string;
@@ -20,14 +16,39 @@ interface MetricCell {
   explanation?: string;
 }
 
-function metricCells(summary: RunSummary): MetricCell[] {
-  return [
+/** Prefer the server's cells; rebuild from the flat keys only for a summary
+ *  stored before `cells` existed.
+ *
+ *  The fallback is here rather than deleted because summaries are immutable
+ *  history: every run already in the database predates the field. It is also the
+ *  single place a label is written on the client, which is what the backend's
+ *  self-describing cells exist to remove going forward -- if these two ever
+ *  disagree, the server wins for every new run and only old ones drift. */
+function cellsFor(summary: RunSummary): Cell[] {
+  if (summary.cells?.length) {
+    return summary.cells.map((cell) => ({
+      label: cell.label,
+      value: cell.value,
+      caption: cell.caption,
+      primary: cell.primary,
+      explanation: cell.explanation,
+    }));
+  }
+  const cells: Cell[] = [
     { label: "Quality", value: `${summary.n_strong}/${summary.n_results}`, caption: "strong fits", primary: true },
     { label: "Avg similarity", value: `${summary.avg_match_pct.toFixed(1)}%`, caption: "cosine vs. brief", explanation: SIMILARITY_EXPLANATION },
-    { label: "Avg engagement", value: `${summary.avg_engagement_pct.toFixed(1)}%`, caption: "reach quality" },
-    { label: "Median reach", value: formatFollowers(summary.median_followers), caption: "followers" },
-    { label: "Needs review", value: String(summary.n_weak), caption: "weak fits" },
   ];
+  if (summary.avg_engagement_pct != null) {
+    cells.push({ label: "Avg engagement", value: `${summary.avg_engagement_pct.toFixed(1)}%`, caption: "reach quality" });
+  }
+  if (summary.median_followers != null) {
+    cells.push({ label: "Median reach", value: formatCount(summary.median_followers), caption: "followers" });
+  }
+  if (summary.median_headcount != null) {
+    cells.push({ label: "Median headcount", value: formatCount(summary.median_headcount), caption: "employees" });
+  }
+  cells.push({ label: "Needs review", value: String(summary.n_weak), caption: "weak fits" });
+  return cells;
 }
 
 export function SummaryMetrics({ summary, compact = false }: { summary: RunSummary; compact?: boolean }) {
@@ -36,7 +57,7 @@ export function SummaryMetrics({ summary, compact = false }: { summary: RunSumma
 
   return (
     <dl className={`summary-strip ${compact ? "summary-strip-compact" : ""}`}>
-      {metricCells(summary).map((cell) => {
+      {cellsFor(summary).map((cell) => {
         const body = (
           <>
             <strong>{cell.value}</strong>
@@ -61,7 +82,7 @@ export function SummaryMetrics({ summary, compact = false }: { summary: RunSumma
                     onClick={() => setExplained((open) => !open)}
                   >
                     {cell.label}
-                    <span className="summary-explain-icon" aria-hidden="true">?</span>
+                    <Icon name="info" size={12} />
                   </button>
                 </dt>
               )
@@ -74,8 +95,3 @@ export function SummaryMetrics({ summary, compact = false }: { summary: RunSumma
   );
 }
 
-export function formatFollowers(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
-  return String(value);
-}

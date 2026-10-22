@@ -33,13 +33,12 @@ import hashlib
 import math
 import random
 import re
-import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
-from faker import Faker
-
-from .models import CreatorSignals, Influencer
+from .corpora import CreatorSignals, CreatorSourceRecord, Influencer
 from .platforms import PLATFORMS
+from .slotting import ascii_fold, slot_faker, slot_rng, stable_seed
 
 TOPIC_TAGS = [
     "AI", "C++", "DIY", "DJ", "EVs", "FIRE", "FPS", "HIIT", "JavaScript",
@@ -378,6 +377,33 @@ def _draw_signals(
     collaborations = rng.sample(brand_pool, k=min(len(brand_pool), rng.randint(0, 5)))
     collaborations.sort()
 
+    # Synthetic distributions use the same account-level estimates as the
+    # display fields. Keep them as shares so provider imports can replace these
+    # maps without changing the canonical model.
+    age_bands = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+    dominant_age = next((band for band in age_bands if band in audience_age), "25-34")
+    distribution_rng = random.Random(stable_seed((creator_id,), "audience-distributions"))
+    age_weights = {band: distribution_rng.gammavariate(1.5, 1) for band in age_bands}
+    age_weights[dominant_age] *= 4
+    age_total = sum(age_weights.values())
+    age_distribution = {band: round(value / age_total, 4) for band, value in age_weights.items()}
+
+    female_pct = 50
+    match = re.search(r"(\d+)%\s*Female", audience_gender, re.IGNORECASE)
+    if match:
+        female_pct = int(match.group(1))
+    else:
+        match = re.search(r"(\d+)%\s*Male", audience_gender, re.IGNORECASE)
+        if match:
+            female_pct = 100 - int(match.group(1))
+    gender_distribution = {"female": female_pct / 100, "male": 1 - female_pct / 100}
+
+    country_weights = [0.60] + [0.40 / max(len(top_countries) - 1, 1)] * (len(top_countries) - 1)
+    country_distribution = dict(zip(top_countries, country_weights))
+    primary_languages = LANGUAGES_BY_COUNTRY.get(audience_country, ["English"])
+    language_distribution = {language: round(0.7 / len(primary_languages), 4) for language in primary_languages}
+    language_distribution["Other"] = round(0.3, 4)
+
     return CreatorSignals(
         creator_id=creator_id,
         content_style=rng.choices(
@@ -392,6 +418,10 @@ def _draw_signals(
         sponsored_ratio=sponsored_ratio,
         growth_trend=growth_trend,
         audience_top_countries=top_countries,
+        age_distribution=age_distribution,
+        gender_distribution=gender_distribution,
+        country_distribution=country_distribution,
+        language_distribution=language_distribution,
     )
 
 
@@ -403,35 +433,6 @@ def _apply_reach(views: int, likes: int, multiplier: float) -> int:
     rate computed from those two numbers.
     """
     return max(round(views * multiplier), likes, 1)
-
-
-def _slot_rng(key: tuple) -> random.Random:
-    """A generator whose stream depends only on the slot key, not on position."""
-    return random.Random("|".join(str(part) for part in key))
-
-
-def _stable_seed(key: tuple, *parts: object) -> int:
-    """A stable integer for a purpose, derived from the slot key.
-
-    Python's `hash()` is not usable here: string hashing is salted per
-    process, so the same corpus would produce different values on every run and
-    silently break the determinism contract.
-    """
-    material = "|".join(str(part) for part in (*key, *parts))
-    return int.from_bytes(hashlib.sha256(material.encode("utf-8")).digest()[:8], "big")
-
-
-def _slot_faker(key: tuple, locale: str) -> Faker:
-    """Faker seeded from the slot key, so names do not depend on emit order.
-
-    Faker's own `seed()` would work too, but hashing keeps the seed a plain
-    string, so the value is reproducible across faker versions rather than
-    depending on that version's internal seeding.
-    """
-    digest = hashlib.sha256("|".join(str(p) for p in key).encode("utf-8")).digest()
-    fake = Faker(locale)
-    fake.seed_instance(int.from_bytes(digest[:8], "big"))
-    return fake
 
 
 def _create_creator(
@@ -448,7 +449,7 @@ def _create_creator(
     is byte-identical no matter how many creators are generated before it or
     what floor the balanced generator used.
     """
-    rng = _slot_rng(key)
+    rng = slot_rng(key)
     used_handles = used_handles if used_handles is not None else set()
 
     tags = _draw_tags(rng, focus)
@@ -469,11 +470,11 @@ def _create_creator(
     # a sub-salt derived from the slot key, so it never touches another
     # creator's stream.
     locale = LOCALE_BY_COUNTRY.get(country, "en_US")
-    name = _slot_faker(key + ("name",), locale).name()
+    name = slot_faker(key + ("name",), locale).name()
 
     handle = ""
     for attempt in range(_MAX_HANDLE_ATTEMPTS):
-        handle = _derive_handle(name, tags, _stable_seed(key, "handle", attempt))
+        handle = _derive_handle(name, tags, stable_seed(key, "handle", attempt))
         if handle and handle not in used_handles:
             break
     else:
@@ -484,6 +485,19 @@ def _create_creator(
     signals = _draw_signals(
         rng, creator_id, country, tags, followers,
         reach_ratio, plan.sponsored_ratio, plan.growth_trend,
+    )
+    identity_key = f"synthetic:{key[0]}:{key[1]}:{key[3]}"
+    identity_id = stable_seed(identity_key) & ((1 << 63) - 1) or 1
+    identity_name = slot_faker((key[0], key[1], key[3], "identity"), "en_US").name()
+    observed_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(
+        days=stable_seed(key, "observed-at") % 270
+    )
+    source_record = CreatorSourceRecord(
+        provider="synthetic",
+        external_account_id=f"synthetic-{creator_id}",
+        profile_url=f"https://social.example/{platform.lower()}/{handle.lstrip('@')}",
+        observed_at=observed_at,
+        raw_payload={"generator": "seeded", "slot": str(key[3])},
     )
     # The lead tags give the bio a readable subject without reintroducing a
     # taxonomy label.
@@ -507,6 +521,13 @@ def _create_creator(
         sponsored_ratio=signals.sponsored_ratio,
         growth_trend=signals.growth_trend,
         audience_top_countries=list(signals.audience_top_countries),
+        audience_age_distribution=dict(signals.age_distribution),
+        audience_gender_distribution=dict(signals.gender_distribution),
+        audience_country_distribution=dict(signals.country_distribution),
+        audience_language_distribution=dict(signals.language_distribution),
+        identity_id=identity_id, identity_key=identity_key,
+        identity_name=identity_name, profile_url=source_record.profile_url,
+        source_records=[source_record],
     )
 
 
@@ -518,31 +539,13 @@ _HANDLE_MAX_LEN = 30
 _TAG_SUFFIX_MAX_LEN = 12
 
 
-def _ascii_fold(text: str) -> str:
-    """Best-effort transliteration to ASCII.
-
-    `faker.decode` is a private module, so it is imported defensively: a
-    future Faker major could move it. The `unicodedata` fallback still handles
-    accented Latin correctly, and only fails to romanize entirely non-Latin
-    scripts, which is why `_name_parts` treats an empty result as "no usable
-    name" rather than producing an empty handle.
-    """
-    try:
-        from faker.decode import unidecode
-    except ImportError:  # pragma: no cover - only on a Faker major upgrade
-        unidecode = None
-    if unidecode is not None:
-        return unidecode(text)
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
-
-
 def _name_parts(name: str) -> tuple[str, str | None]:
     """(first, last) of an ASCII-folded display name, lowercased.
 
     Single-word names get a `None` surname, which the pattern list handles
     separately rather than inventing one.
     """
-    bits = [bit for bit in re.split(r"[^A-Za-z]+", _ascii_fold(name)) if bit]
+    bits = [bit for bit in re.split(r"[^A-Za-z]+", ascii_fold(name)) if bit]
     if not bits:
         return "", None
     first = bits[0].lower()
@@ -560,7 +563,7 @@ def _tag_slug(tags: list[str], seed: int) -> str:
     """
     candidates = []
     for tag in tags:
-        slug = re.sub(r"[^a-z0-9]+", "", _ascii_fold(tag).lower())
+        slug = re.sub(r"[^a-z0-9]+", "", ascii_fold(tag).lower())
         if slug:
             candidates.append(slug[:_TAG_SUFFIX_MAX_LEN])
     if not candidates:

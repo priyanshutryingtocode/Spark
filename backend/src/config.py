@@ -48,6 +48,12 @@ DEFAULT_INFLUENCER_COUNT = 60
 DEFAULT_TOP_K_RETRIEVAL = 10
 DEFAULT_TOP_N_RANKED = 5
 
+# How much the structured match score counts against the embedding similarity.
+# The similarity scale is narrow -- a corpus sits in roughly a 0.78-0.88 band --
+# so a small number is a large one. Chosen from the evaluation curve rather
+# than guessed; see the `rerank_weight` block in the evaluation report.
+RERANK_WEIGHT = float(os.environ.get("RERANK_WEIGHT", "0.25"))
+
 # A free-text brief. The floor is enforced on write only, so stored runs whose
 # brief was a short fixed label still validate when they are read back.
 MIN_GOAL_LENGTH = int(os.environ.get("MIN_GOAL_LENGTH", "8"))

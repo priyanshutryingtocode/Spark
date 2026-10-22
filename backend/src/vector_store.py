@@ -3,14 +3,17 @@
 import hashlib
 import logging
 import threading
+from typing import Any
 
 import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
+from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+from psycopg.types.json import Jsonb
 
 from . import config
-from .models import Influencer
+from .corpora import Corpus
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +147,7 @@ def init_schema(conn: psycopg.Connection, table: str = DEFAULT_TABLE) -> None:
     _schema_ready_tables.add(table)
 
 
-def count_influencers(conn: psycopg.Connection, table: str = DEFAULT_TABLE) -> int:
+def count_records(conn: psycopg.Connection, table: str = DEFAULT_TABLE) -> int:
     _validate_identifier(table)
     return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
@@ -217,111 +220,268 @@ def _refresh_stats(conn: psycopg.Connection, table: str = DEFAULT_TABLE) -> None
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+def _insert_sql(table: str, columns: tuple[str, ...], key: str | tuple[str, ...]) -> str:
+    """INSERT ... ON CONFLICT DO UPDATE, derived entirely from `columns`.
 
-def upsert_influencers(
-    conn: psycopg.Connection, influencers: list[Influencer], table: str = DEFAULT_TABLE
-) -> None:
+    Every fragment comes from the one tuple: the column list, the VALUES
+    placeholders, and the DO UPDATE assignments (all columns except the conflict
+    key). They used to be written out by hand, three times, and when a column was
+    dropped from one copy the statement still parsed -- it just wrote every value
+    into the wrong column. That is the bug `test_run_store.py` was written for.
+    """
     _validate_identifier(table)
-    rows = [
-        (
-            inf.id, inf.handle, inf.platform, inf.city,
-            inf.followers, inf.engagement, inf.tags, inf.bio,
-            inf.embedding, config.EMBED_MODEL, _content_hash(inf.corpus_text()),
-            inf.name, inf.country, inf.language,
-            inf.average_views, inf.average_likes, inf.average_comments,
-            inf.verified, inf.posts_per_week, inf.account_age_years,
-        )
-        for inf in influencers
-    ]
-    signal_rows = [
-        (
-            s.creator_id, s.content_style, s.audience_age, s.audience_gender,
-            s.audience_country, s.brand_collaborations, s.reach_ratio,
-            s.sponsored_ratio, s.growth_trend, s.audience_top_countries,
-        )
-        for s in (inf.signals() for inf in influencers)
-    ]
+    placeholders = ", ".join(["%s"] * len(columns))
+    keys = (key,) if isinstance(key, str) else key
+    assignments = ", ".join(f"{c} = EXCLUDED.{c}" for c in columns if c not in keys)
+    return (
+        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {assignments}"
+    )
+
+
+def upsert_records(conn: psycopg.Connection, records: list, corpus: Corpus) -> None:
+    _validate_identifier(corpus.table)
+    _validate_identifier(corpus.signals_table)
+
+    rows = []
+    for record in records:
+        row = corpus.row_from_record(record)
+        missing = set(corpus.write_columns) - set(row)
+        if missing:
+            raise ValueError(f"{corpus.kind} row is missing columns: {sorted(missing)}")
+        rows.append(tuple(row[c] for c in corpus.write_columns))
+
+    signal_rows = []
+    for signals in (record.signals() for record in records):
+        row = _signal_row(signals, corpus.signals_key)
+        missing = set(corpus.signal_columns) - set(row)
+        if missing:
+            raise ValueError(f"{corpus.kind} signal row is missing columns: {sorted(missing)}")
+        signal_rows.append(tuple(row[c] for c in corpus.signal_columns))
+
+    if corpus.kind == "creator":
+        identities = {
+            identity.id: identity
+            for record in records
+            if (identity := record.identity()) is not None
+        }
+        if identities:
+            identity_columns = ("id", "identity_key", "display_name")
+            identity_rows = [
+                (identity.id, identity.identity_key, identity.display_name)
+                for identity in identities.values()
+            ]
+            with conn.cursor() as identity_cursor:
+                identity_cursor.executemany(
+                    _insert_sql("creator_identities", identity_columns, "id"), identity_rows
+                )
+
     with conn.cursor() as cur:
+        cur.executemany(_insert_sql(corpus.table, corpus.write_columns, "id"), rows)
         cur.executemany(
-            f"""
-            INSERT INTO {table}
-                (id, handle, platform, city, followers, engagement, tags, bio,
-                 embedding, embed_model, content_hash, name, country, language,
-                 average_views, average_likes, average_comments, verified, posts_per_week,
-                 account_age_years)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                handle = EXCLUDED.handle, platform = EXCLUDED.platform,
-                city = EXCLUDED.city, followers = EXCLUDED.followers, engagement = EXCLUDED.engagement,
-                tags = EXCLUDED.tags, bio = EXCLUDED.bio,
-                embedding = EXCLUDED.embedding, embed_model = EXCLUDED.embed_model,
-                content_hash = EXCLUDED.content_hash, name = EXCLUDED.name,
-                country = EXCLUDED.country,
-                language = EXCLUDED.language, average_views = EXCLUDED.average_views,
-                average_likes = EXCLUDED.average_likes, average_comments = EXCLUDED.average_comments,
-                verified = EXCLUDED.verified, posts_per_week = EXCLUDED.posts_per_week,
-                account_age_years = EXCLUDED.account_age_years
-            """,
-            rows,
-        )
-        cur.executemany(
-            """
-            INSERT INTO creator_signals
-                (creator_id, content_style, audience_age, audience_gender,
-                 audience_country, brand_collaborations, reach_ratio,
-                 sponsored_ratio, growth_trend, audience_top_countries)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (creator_id) DO UPDATE SET
-                content_style = EXCLUDED.content_style,
-                audience_age = EXCLUDED.audience_age,
-                audience_gender = EXCLUDED.audience_gender,
-                audience_country = EXCLUDED.audience_country,
-                brand_collaborations = EXCLUDED.brand_collaborations,
-                reach_ratio = EXCLUDED.reach_ratio,
-                sponsored_ratio = EXCLUDED.sponsored_ratio,
-                growth_trend = EXCLUDED.growth_trend,
-                audience_top_countries = EXCLUDED.audience_top_countries
-            """,
+            _insert_sql(corpus.signals_table, corpus.signal_columns, corpus.signals_key),
             signal_rows,
         )
+        if corpus.kind == "creator":
+            source_columns = (
+                "account_id", "provider", "external_account_id", "profile_url",
+                "observed_at", "raw_payload",
+            )
+            sources = [
+                (
+                    record.id, source.provider, source.external_account_id,
+                    source.profile_url or None, source.observed_at, Jsonb(source.raw_payload),
+                )
+                for record in records for source in record.source_records
+            ]
+            if sources:
+                cur.executemany(
+                    _insert_sql(
+                        "creator_account_sources", source_columns,
+                        ("provider", "external_account_id"),
+                    ),
+                    sources,
+                )
+
+            metric_columns = (
+                "account_id", "provider", "observed_at", "period_days", "sample_size",
+                "followers", "average_views", "average_likes", "average_comments",
+                "engagement_rate", "posts_per_week",
+            )
+            metric_snapshots = [
+                snapshot
+                for record in records
+                for snapshot in (record.metric_snapshots or [record.metrics_snapshot()])
+            ]
+            if metric_snapshots:
+                metric_rows = [
+                    tuple(getattr(snapshot, column) for column in metric_columns)
+                    for snapshot in metric_snapshots
+                ]
+                cur.executemany(
+                    _insert_sql(
+                        "creator_metric_snapshots", metric_columns,
+                        ("account_id", "provider", "observed_at", "period_days"),
+                    ),
+                    metric_rows,
+                )
+
+            audience_columns = (
+                "account_id", "provider", "observed_at", "sample_size", "confidence",
+                "age_distribution", "gender_distribution", "country_distribution",
+                "language_distribution",
+            )
+            audience_snapshots = [
+                snapshot
+                for record in records
+                for snapshot in (record.audience_snapshots or [record.audience_snapshot()])
+            ]
+            if audience_snapshots:
+                audience_rows = [
+                    (
+                        snapshot.account_id, snapshot.provider, snapshot.observed_at,
+                        snapshot.sample_size, snapshot.confidence,
+                        Jsonb(snapshot.age_distribution), Jsonb(snapshot.gender_distribution),
+                        Jsonb(snapshot.country_distribution), Jsonb(snapshot.language_distribution),
+                    )
+                    for snapshot in audience_snapshots
+                ]
+                cur.executemany(
+                    _insert_sql(
+                        "creator_audience_snapshots", audience_columns,
+                        ("account_id", "provider", "observed_at"),
+                    ),
+                    audience_rows,
+                )
+        elif corpus.kind == "prospect":
+            sources = [
+                (
+                    record.id, source.provider, source.external_company_id,
+                    source.profile_url or None, source.observed_at, Jsonb(source.raw_payload),
+                )
+                for record in records for source in record.source_records
+            ]
+            if sources:
+                cur.executemany(
+                    _insert_sql(
+                        "company_sources",
+                        ("company_id", "provider", "external_company_id", "profile_url", "observed_at", "raw_payload"),
+                        ("provider", "external_company_id"),
+                    ),
+                    sources,
+                )
+
+            metric_columns = (
+                "company_id", "provider", "observed_at", "headcount",
+                "headcount_low", "headcount_high", "headcount_growth_rate",
+                "revenue_low", "revenue_high", "revenue_period", "revenue_currency",
+                "monthly_web_visits", "open_roles",
+                "sample_size", "confidence",
+            )
+            metric_snapshots = [
+                snapshot
+                for record in records
+                for snapshot in (record.metric_snapshots or [record.metrics_snapshot()])
+            ]
+            if metric_snapshots:
+                cur.executemany(
+                    _insert_sql(
+                        "company_metric_snapshots", metric_columns,
+                        ("company_id", "provider", "observed_at"),
+                    ),
+                    [tuple(getattr(snapshot, column) for column in metric_columns) for snapshot in metric_snapshots],
+                )
+
+            round_columns = (
+                "company_id", "provider", "external_round_id", "round_type",
+                "announced_at", "amount", "currency", "post_money_valuation",
+                "investors", "source_url", "raw_payload",
+            )
+            funding_rounds = [round_ for record in records for round_ in record.funding_rounds]
+            if funding_rounds:
+                cur.executemany(
+                    _insert_sql(
+                        "company_funding_rounds", round_columns,
+                        ("provider", "external_round_id"),
+                    ),
+                    [
+                        (
+                            round_.company_id, round_.provider, round_.external_round_id,
+                            round_.round_type, round_.announced_at, round_.amount,
+                            round_.currency, round_.post_money_valuation,
+                            Jsonb(round_.investors), round_.source_url or None,
+                            Jsonb(round_.raw_payload),
+                        )
+                        for round_ in funding_rounds
+                    ],
+                )
 
 
-def replace_influencers(
-    conn: psycopg.Connection, influencers: list[Influencer], table: str = DEFAULT_TABLE
-) -> None:
-    """Atomically swap the table's contents for a fresh set.
+def _signal_row(signals, key: str) -> dict:
+    """The signals dataclass as a {column: value} dict, keyed however this
+    corpus names its primary key (creator_id / prospect_id)."""
+    row = {f: getattr(signals, f) for f in signals.__dataclass_fields__}
+    row.pop(key, None)
+    row[key] = getattr(signals, key)
+    return row
 
-    Callers must fully generate + embed `influencers` *before* calling this
+
+def replace_records(conn: psycopg.Connection, records: list, corpus: Corpus) -> None:
+    """Atomically swap the corpus's contents for a fresh set.
+
+    Callers must fully generate + embed the records *before* calling this
     -- nothing in here should ever run a Gemini call. The clear and the
     write both happen inside one transaction (conn.transaction(), which
     works even though get_connection() sets autocommit=True), so if the
     write fails partway through, the clear is rolled back too and the
     table is left exactly as it was, not empty.
+
+    TRUNCATE CASCADE removes each corpus's signals and source history through
+    foreign keys (migrations 007, 009, 011, 012).
     """
-    _validate_identifier(table)
+    _validate_identifier(corpus.table)
     with conn.transaction():
-        # CASCADE so the signals rows go with their creators; without it the
+        # CASCADE so the signals rows go with their records; without it the
         # foreign key would block the truncate.
-        conn.execute(f"TRUNCATE {table} CASCADE")
-        upsert_influencers(conn, influencers, table=table)
-    _refresh_stats(conn, table)
+        conn.execute(f"TRUNCATE {corpus.table} CASCADE")
+        if corpus.kind == "creator":
+            conn.execute("TRUNCATE creator_identities CASCADE")
+        upsert_records(conn, records, corpus)
+    _refresh_stats(conn, corpus.table)
 
 
 def search(
     conn: psycopg.Connection,
     query_embedding: np.ndarray,
-    platform: str,
+    corpus: Corpus,
+    facet: str | None,
     top_k: int,
-    table: str = DEFAULT_TABLE,
-) -> list[Influencer]:
-    _validate_identifier(table)
+    filters: dict[str, Any] | None = None,
+) -> list:
+    """Retrieve the `top_k` rows of `corpus` nearest `query_embedding`.
+
+    `facet` is the already-resolved filter value, or None for unfiltered. The
+    caller decides that, because whether a facet is a filter at all is a property
+    of the corpus (`Corpus.facet_is_hard_filter`), not of this function.
+
+    `filters` adds the corpus's structured filters, as {column: value}. A list
+    value is matched with `= ANY(...)` so "these industries" is one clause
+    rather than one per value.
+
+    Returns whatever `corpus.row_builder` produces, which is why the annotation
+    is not list[Influencer]: a second corpus returns prospects.
+    """
+    _validate_identifier(corpus.table)
+    _validate_identifier(corpus.signals_table)
 
     try:
-        # Unfiltered (platform=Any) searches walk the whole HNSW graph, so
-        # they get a larger ef_search to avoid under-fetching neighbors;
-        # filtered searches need far fewer graph hops since they match a
-        # smaller platform subset.
-        ef_search = max(80, top_k * 8) if platform == "Any" else max(40, top_k * 4)
+        # An unfiltered search walks the whole HNSW graph, so it needs a larger
+        # ef_search to avoid under-fetching neighbours; a filtered one matches a
+        # smaller subset and needs far fewer hops. Keyed on whether a WHERE
+        # clause exists rather than on any one corpus's facet name, so a corpus
+        # with no facet at all takes the unfiltered branch correctly.
+        has_where = facet is not None or bool(filters)
+        ef_search = max(80, top_k * 8) if not has_where else max(40, top_k * 4)
         conn.execute(
             "SELECT set_config('hnsw.ef_search', %s, false)", (str(ef_search),)
         )
@@ -329,47 +489,69 @@ def search(
         logger.debug("hnsw.ef_search tuning failed", exc_info=True)
 
     # One LEFT JOIN, not a second query: retrieval returns top_k rows and a
-    # per-row signal fetch would be top_k round trips. The join is on the
-    # primary key, so it does not change the row set, and every signal is
-    # COALESCEd so a creator with no signal row still reads back cleanly
-    # rather than raising on a NULL.
-    sql = f"""
-        SELECT i.id, i.handle, i.platform, i.city, i.followers, i.engagement, i.tags, i.bio,
-               1 - (i.embedding <=> %s) AS similarity,
-               COALESCE(i.name, ''),
-               COALESCE(i.country, ''), COALESCE(i.language, ''), COALESCE(i.average_views, 0),
-               COALESCE(i.average_likes, 0), COALESCE(i.average_comments, 0), COALESCE(i.verified, FALSE),
-               COALESCE(i.posts_per_week, 0), COALESCE(i.account_age_years, 0),
-               COALESCE(s.content_style, ''), COALESCE(s.audience_age, ''),
-               COALESCE(s.audience_gender, ''), COALESCE(s.audience_country, ''),
-               COALESCE(s.brand_collaborations, ARRAY[]::TEXT[]),
-               COALESCE(s.reach_ratio, 0), COALESCE(s.sponsored_ratio, 0),
-               COALESCE(s.growth_trend, ''),
-               COALESCE(s.audience_top_countries, ARRAY[]::TEXT[])
-        FROM {table} AS i
-        LEFT JOIN creator_signals AS s ON s.creator_id = i.id
-    """
+    # per-row signal fetch would be top_k round trips. The join is on the primary
+    # key, so it does not change the row set, and every signal is COALESCEd so a
+    # record with no signal row still reads back cleanly rather than raising on a
+    # NULL.
+    #
+    # dict_row, not positional: the column list moved into the corpus spec, and
+    # two row shapes mapped by index is exactly how the removed `pipeline` column
+    # turned into a silent column shift. This is also why every expression in
+    # corpus.search_sql carries an explicit alias -- an unaliased COALESCE(...)
+    # arrives as "coalesce", and sixteen of them would collide on one key.
+    sql = corpus.search_sql.format(
+        table=corpus.table,
+        signals_table=corpus.signals_table,
+        signals_key=corpus.signals_key,
+    )
     params: list = [query_embedding]
-    if platform != "Any":
-        sql += " WHERE i.platform = %s"
-        params.append(platform)
+    clauses: list[str] = []
+    if facet is not None:
+        clauses.append(f"i.{corpus.facet_column} = %s")
+        params.append(facet)
+    for column, value in (filters or {}).items():
+        # The column is validated as an identifier because it is interpolated
+        # into the statement. It comes from a Corpus declaration rather than user
+        # input, but a declared column is still a string in a query. A qualified
+        # name ("s.audience_age") is allowed because some filters read the
+        # signals table, which is where the inferred fields live.
+        qualifier, _, bare = column.rpartition(".")
+        if qualifier:
+            _validate_identifier(qualifier)
+            column_ref = f"{qualifier}.{bare}"
+        else:
+            column_ref = column
+        _validate_identifier(bare)
+        # The band check comes first: a (min, max) tuple is also a list, and
+        # taking the list branch turned "between 200 and 2000 staff" into
+        # "headcount is one of 200 or 2000", which matches almost nothing.
+        is_band = (
+            isinstance(value, (tuple, list))
+            and len(value) == 2
+            and all(isinstance(bound, (int, float)) and not isinstance(bound, bool) for bound in value)
+        )
+        if is_band:
+            clauses.append(f"{column_ref} BETWEEN %s AND %s")
+            params.append(value[0])
+            params.append(value[1])
+        elif isinstance(value, (list, tuple, set)):
+            clauses.append(f"{column_ref} = ANY(%s)")
+            params.append(list(value))
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            clauses.append(f"{column_ref} = %s")
+            params.append(value)
+        else:
+            clauses.append(f"{column_ref} = %s")
+            params.append(value)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY (i.embedding <=> %s) LIMIT %s"
     params.append(query_embedding)
     params.append(top_k)
 
-    rows = conn.execute(sql, params).fetchall()
-    return [
-        Influencer(
-            id=r[0], handle=r[1], platform=r[2], city=r[3],
-            followers=r[4], engagement=float(r[5]), tags=list(r[6]), bio=r[7],
-            similarity=float(r[8]),
-            name=r[9], country=r[10], language=r[11],
-            average_views=r[12], average_likes=r[13], average_comments=r[14],
-            verified=r[15], posts_per_week=r[16], account_age_years=r[17],
-            content_style=r[18], audience_age=r[19], audience_gender=r[20],
-            audience_country=r[21], brand_collaborations=list(r[22]),
-            reach_ratio=float(r[23]), sponsored_ratio=float(r[24]),
-            growth_trend=r[25], audience_top_countries=list(r[26]),
-        )
-        for r in rows
-    ]
+    # dict_row is set on a cursor, not on execute(): Connection.execute() has no
+    # row_factory parameter, and setting it on the pooled connection instead would
+    # leak into every other caller that shares the pool.
+    with conn.cursor(row_factory=dict_row) as cur:
+        rows = cur.execute(sql, params).fetchall()
+    return [corpus.row_builder(row) for row in rows]

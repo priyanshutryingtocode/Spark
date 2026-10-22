@@ -1,3 +1,5 @@
+import { Icon } from "./Icon";
+
 interface SystemNoteProps {
   /** `error` claims something failed; `info` is neutral guidance. Drives both
    *  the accent colour and the live-region role, so a failure is always
@@ -16,7 +18,9 @@ interface SystemNoteProps {
 export function SystemNote({ tone, title, children, action }: SystemNoteProps) {
   return (
     <div className={`system-note system-note-${tone}`} role={tone === "error" ? "alert" : "status"}>
-      <span className="system-note-signal" aria-hidden="true" />
+      <span className="system-note-signal" aria-hidden="true">
+        <Icon name={tone === "error" ? "alert" : "info"} size={15} />
+      </span>
       <strong>{title}</strong>
       <span>{children}</span>
       {action && <span className="note-actions">{action}</span>}

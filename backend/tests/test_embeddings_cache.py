@@ -197,7 +197,7 @@ def test_embedding_cache_skips_a_truncated_final_line(tmp_path, fake_api):
     assert cache.get("key-b") is None
 
 
-def test_index_influencers_reuses_cached_vectors(tmp_path, fake_api, recorder):
+def test_index_records_reuses_cached_vectors(tmp_path, fake_api, recorder):
     from src.data_generator import generate_influencers
 
     fake_api()
@@ -208,14 +208,14 @@ def test_index_influencers_reuses_cached_vectors(tmp_path, fake_api, recorder):
     cache.put_many([(key, np.full(config.EMBED_DIMENSIONS, 0.25, dtype=np.float32)) for key in keys])
     requests_before = len(recorder)
 
-    embeddings.index_influencers(influencers, cache=cache)
+    embeddings.index_records(influencers, cache=cache)
 
     assert len(recorder) == requests_before  # nothing re-billed
     assert all(influencer.embedding is not None for influencer in influencers)
     assert pytest.approx(1.0, abs=1e-5) == float(np.linalg.norm(influencers[0].embedding))
 
 
-def test_index_influencers_embeds_only_cache_misses(tmp_path, fake_api, recorder):
+def test_index_records_embeds_only_cache_misses(tmp_path, fake_api, recorder):
     from src.data_generator import generate_influencers
 
     fake_api()
@@ -227,7 +227,7 @@ def test_index_influencers_embeds_only_cache_misses(tmp_path, fake_api, recorder
     )])
     requests_before = len(recorder)
 
-    embeddings.index_influencers(influencers, cache=cache)
+    embeddings.index_records(influencers, cache=cache)
 
     assert len(recorder) == requests_before + 3
     assert cache.hits == 1

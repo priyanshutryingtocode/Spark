@@ -1,48 +1,45 @@
 from __future__ import annotations
 
-from api.serialization import SUMMARY_KEYS, build_summary, candidate_key
+from api.serialization import candidate_key, summarize_record
+from src.corpora import CREATORS, Corpus
 
 
-def summarize_run(run: dict) -> dict:
-    """Reuse the stored summary when it is complete, else recompute it.
+def summarize_run(run: dict, corpus: Corpus = CREATORS) -> dict:
+    return summarize_record(run, corpus)
 
-    The arithmetic lives in `serialization.build_summary`; this only decides
-    whether it has to run. It used to carry its own copy, reading the persisted
-    dicts while the original read `Influencer` objects -- two implementations
-    of one number, free to disagree.
+
+def compare_runs(run_a: dict, run_b: dict, corpus: Corpus = CREATORS) -> dict:
+    """Compare two runs of the same corpus. The caller owns the cross-corpus
+    refusal; this only compares.
     """
-    stored = run.get("summary")
-    if stored and all(key in stored for key in SUMMARY_KEYS):
-        return stored
-    result = run["result"]
-    return build_summary(result["candidates"], result["ranked"])
+    candidates_a = {candidate_key(i): i for i in run_a["result"]["candidates"]}
+    candidates_b = {candidate_key(i): i for i in run_b["result"]["candidates"]}
+    ranked_a = {e["id"] for e in run_a["result"]["ranked"]}
+    ranked_b = {e["id"] for e in run_b["result"]["ranked"]}
 
-
-def compare_runs(run_a: dict, run_b: dict) -> dict:
-    candidates_a = {candidate_key(item): item for item in run_a["result"]["candidates"]}
-    candidates_b = {candidate_key(item): item for item in run_b["result"]["candidates"]}
-    ranked_a = {item["id"]: item for item in run_a["result"]["ranked"]}
-    ranked_b = {item["id"]: item for item in run_b["result"]["ranked"]}
-    keys_a = {_ranked_key(item, candidates_a) for item in ranked_a.values()}
-    keys_b = {_ranked_key(item, candidates_b) for item in ranked_b.values()}
-    shared = []
-    for key in sorted(keys_a & keys_b):
-        candidate = candidates_a[key]
-        shared.append({
+    shared = [
+        {
             "id": candidate["id"],
-            "creator_key": candidate_key(candidate),
-            "handle": candidate["handle"],
-        })
+            "creator_key": key,
+            # `label`, not `handle`: a company has none, and reading
+            # candidate["handle"] off one is what this field exists to avoid.
+            "label": _label(candidate, corpus),
+        }
+        for key, candidate in sorted(candidates_a.items())
+        if key in candidates_b
+        and candidate["id"] in ranked_a
+        and candidate["id"] in ranked_b
+    ]
+
     return {
         "run_ids": [run_a["id"], run_b["id"]],
-        "summary_a": summarize_run(run_a),
-        "summary_b": summarize_run(run_b),
-        "shared_creators": shared,
+        "summary_a": summarize_run(run_a, corpus),
+        "summary_b": summarize_run(run_b, corpus),
+        "shared": shared,
     }
 
 
-def _ranked_key(entry: dict, candidates: dict[str, dict]) -> str:
-    candidate = candidates.get(next((key for key, item in candidates.items() if item["id"] == entry["id"]), ""))
-    if candidate is None:
-        return str(entry.get("creator_key") or entry["id"])
-    return candidate_key(candidate)
+def _label(candidate: dict, corpus: Corpus) -> str:
+    if corpus.kind == "prospect":
+        return str(candidate.get("name") or candidate.get("creator_key") or "")
+    return str(candidate.get("handle") or candidate.get("name") or candidate.get("creator_key") or "")

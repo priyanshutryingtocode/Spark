@@ -5,3 +5,8 @@
 /* Available to assistive tech, out of the visual layout. Used for the loading
    announcement that replaces a visible-but-empty results area. */
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* An icon. It never carries meaning on its own -- every mark sits on a control
+   that already has a label -- so it is sized against the text beside it and
+   never allowed to flex, or a long label would push it out of shape. */
+.icon { display: inline-block; flex: 0 0 auto; vertical-align: -.15em; }

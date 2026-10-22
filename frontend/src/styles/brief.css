@@ -3,40 +3,104 @@
 .match-workspace { display: grid; grid-template-columns: 17.5rem minmax(0, 1fr); gap: var(--space-7); align-items: start; }
 .brief-rail { min-width: 0; padding-right: var(--space-6); border-right: 1px solid var(--rule); }
 .rail-heading, .ledger-heading, .control-heading, .section-heading.compact, .run-status-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
-.rail-heading, .ledger-heading { padding-bottom: var(--space-3); color: var(--muted-strong); font-size: var(--text-xs); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.rail-heading, .ledger-heading { padding-bottom: var(--space-3); color: var(--muted-strong); font-size: var(--text-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .rail-heading span:last-child, .ledger-heading span:last-child { color: var(--signal-dim); font-family: var(--font-mono); font-size: var(--text-2xs); }
 .brief-form { display: grid; gap: var(--space-6); }
 .brief-fields { display: grid; gap: var(--space-4); }
-.brief-field, .range-control { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-xs); font-weight: 650; }
+.brief-field, .range-control { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--text-xs); font-weight: 600; }
 .brief-field > span, .range-control > span { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .brief-field em { color: var(--muted); font-style: normal; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .brief-field .field-count { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 500; }
 .brief-field textarea { min-height: 96px; }
 .suggestion-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: -var(--space-2); }
-.chip { border: 1px solid var(--rule); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-3); background: transparent; color: var(--muted-strong); font-size: var(--text-xs); text-align: left; cursor: pointer; }
-.chip:hover { border-color: var(--signal); color: var(--text); }
-input, select, textarea { width: 100%; border: 1px solid var(--rule); border-radius: var(--radius); padding: var(--space-3) var(--space-3); color: var(--text); background: var(--surface-soft); outline: none; }
+.chip {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease), color var(--motion-duration-fast) var(--motion-ease), background-color var(--motion-duration-fast) var(--motion-ease);
+}
+.chip:hover { border-color: var(--signal); color: var(--text); background: var(--signal-soft); }
+input, select, textarea {
+  width: 100%;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  color: var(--text);
+  background: var(--surface-soft);
+  outline: none;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease), background-color var(--motion-duration-fast) var(--motion-ease), box-shadow var(--motion-duration-fast) var(--motion-ease);
+}
+input:hover, select:hover, textarea:hover { border-color: var(--rule-strong); }
 textarea { min-height: 80px; resize: vertical; }
 select { cursor: pointer; }
-input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible, summary:focus-visible { border-color: var(--signal); outline: 2px solid var(--signal-focus); outline-offset: 2px; }
+input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible, summary:focus-visible {
+  border-color: var(--signal);
+  outline: 2px solid var(--signal-focus);
+  outline-offset: 2px;
+}
+/* A focused field also lifts, so the caret's location is obvious in a rail of
+   several fields. */
+input:focus, select:focus, textarea:focus { background: var(--surface); box-shadow: var(--shadow-1); }
 /* <main> takes programmatic focus on every route change. It has no border, so
    the generic rule above would draw a ring around the entire page. */
 .page-content:focus, .page-content:focus-visible { outline: none; }
-.rail-divider { height: 1px; background: var(--rule); }
+.rail-divider { height: 1px; background: var(--rule); mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
 .retrieval-controls { display: grid; gap: var(--space-4); }
-.control-heading { color: var(--muted-strong); font-size: var(--text-xs); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.control-heading { color: var(--muted-strong); font-size: var(--text-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .control-value { color: var(--signal); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: 0; }
 .range-control strong { color: var(--text); font-family: var(--font-mono); font-size: var(--text-xs); }
 input[type="range"] { padding: 0; border: 0; background: transparent; accent-color: var(--signal); }
 .brief-footer { display: grid; gap: var(--space-3); }
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 34px; padding: 0 var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius); cursor: pointer; font-size: var(--text-xs); font-weight: 750; white-space: nowrap; }
-.btn-primary { border-color: var(--signal); color: var(--canvas); background: var(--signal); }
-.btn-primary:hover { background: var(--signal-hover); }
-.btn-secondary { color: var(--muted-strong); background: var(--surface); }
-.btn-secondary:hover { border-color: var(--rule-strong); color: var(--text); }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease), border-color var(--motion-duration-fast) var(--motion-ease), color var(--motion-duration-fast) var(--motion-ease), box-shadow var(--motion-duration-fast) var(--motion-ease), translate var(--motion-duration-press) var(--motion-press);
+}
+/* A press seats the button into the surface: it moves down a pixel and its
+ * shadow collapses. Without it a click is a colour change and nothing else. */
+.btn:active { translate: 0 1px; }
+.btn-primary { border-color: var(--signal); color: var(--canvas); background: linear-gradient(180deg, color-mix(in srgb, var(--signal) 88%, white) 0%, var(--signal) 100%); box-shadow: var(--shadow-1); }
+.btn-primary:hover { border-color: var(--signal-hover); background: linear-gradient(180deg, var(--signal-hover) 0%, var(--signal) 100%); box-shadow: var(--shadow-2); }
+.btn-primary:active { box-shadow: none; }
+.btn-secondary { color: var(--muted-strong); background: var(--surface); box-shadow: var(--edge-highlight); }
+.btn-secondary:hover { border-color: var(--rule-strong); color: var(--text); background: var(--surface-raised); }
 .btn-ghost { border-color: transparent; color: var(--muted); background: transparent; }
 .btn-ghost:hover { border-color: var(--rule-strong); color: var(--text); background: var(--surface-soft); }
 .btn-danger-ghost:hover { border-color: var(--danger-soft); color: var(--danger); }
 .btn:disabled { cursor: not-allowed; opacity: .45; }
 .btn-block { width: 100%; }
 .form-help { color: var(--warning); font-size: var(--text-xs); }
+
+/* --- the structured part of a brief -----------------------------------------
+   The free-text fields above are the wording; these are the requirements. A
+   brief can be precise about its audience or its ICP without having to say it
+   in prose, and the difference matters: a filter excludes, a preference ranks. */
+
+.target-fields { display: grid; gap: var(--space-4); }
+
+.target-field { display: grid; gap: var(--space-2); }
+
+.target-label { color: var(--muted-strong); font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+
+.target-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.chip-on { border-color: var(--signal); color: var(--signal); background: var(--signal-soft); box-shadow: var(--edge-highlight); }
+
+.target-help { margin: 0; color: var(--muted); font-size: var(--text-2xs); line-height: 1.5; }
+
+.brief-section { display: grid; gap: var(--space-3); }

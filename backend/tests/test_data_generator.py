@@ -163,12 +163,13 @@ def test_handle_collision_bumps_only_the_colliding_creator():
 
     # Now make a collide for real: reserve every handle a would try in turn,
     # which is the same condition as a genuinely crowded pool.
-    from src.data_generator import _derive_handle, _stable_seed
+    from src.data_generator import _derive_handle
+    from src.slotting import stable_seed
 
     name = solo_a.name
     tags = list(solo_a.tags)
     taken = {
-        _derive_handle(name, tags, _stable_seed(key_a, "handle", attempt))
+        _derive_handle(name, tags, stable_seed(key_a, "handle", attempt))
         for attempt in range(3)
     }
     crowded = _create_creator(0, key_a, "Instagram", group, used_handles=set(taken))
@@ -258,7 +259,8 @@ def test_non_ascii_names_still_get_a_related_handle():
     46 of the 500 creators have no ASCII characters at all, so this is not an
     edge case.
     """
-    from src.data_generator import _ascii_fold, _name_parts
+    from src.data_generator import _name_parts
+    from src.slotting import ascii_fold
 
     creators = generate_balanced_influencers(count=500, min_per_group_platform=5, seed=42)
     non_ascii = [c for c in creators if not c.name.isascii()]
@@ -266,7 +268,7 @@ def test_non_ascii_names_still_get_a_related_handle():
     for c in non_ascii:
         first, _ = _name_parts(c.name)
         assert first, f"{c.name!r} produced no romanized name"
-        assert _ascii_fold(c.name).isascii()
+        assert ascii_fold(c.name).isascii()
         assert handle_matches_name(c.name, c.handle), f"{c.name!r} -> {c.handle!r}"
 
 
@@ -408,3 +410,32 @@ def test_corpus_text_includes_the_signals_a_reason_may_cite():
         for field in GROUNDABLE_FIELDS:
             for value in GROUNDABLE_FIELDS[field](c):
                 assert str(value) in text, f"{field}={value!r} missing from corpus_text"
+
+
+def test_generated_corpus_text_is_pinned():
+    """A golden fingerprint over a real slice of the corpus.
+
+    `test_same_seed_reproduces_exactly` proves the generator is deterministic.
+    This proves the *format* has not moved, which is a different guarantee and
+    the one with teeth: corpus_text is the text every vector is built from, and
+    `Influencer.corpus_text` says outright that changing it invalidates every
+    cached vector. A reworded fact -- "Topics:" becoming "Focuses on:" -- would
+    change nothing else in the suite and would quietly degrade retrieval quality
+    for every indexed creator until a full re-embed nobody had noticed was
+    needed. A hash pins the exact bytes.
+
+    200 records rather than the full corpus: enough to cover every draw path the
+    generator takes, fast enough to run on every change.
+    """
+    import hashlib
+
+    from src.data_generator import generate_influencers
+
+    fingerprint = hashlib.sha256(
+        "|".join(c.corpus_text() for c in generate_influencers(count=200)).encode("utf-8")
+    ).hexdigest()
+    assert fingerprint == "a093b6c0f91a17ca50834ebfb04271a6a7540cd995406ad27ca8e8f1f38cd195", (
+        "generated corpus_text changed: every cached vector is now stale and the "
+        "corpus must be re-embedded. If this is intentional, update the value here "
+        "AND reindex."
+    )

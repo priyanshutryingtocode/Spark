@@ -21,10 +21,26 @@
   .match-workspace, .history-layout, .skeleton-workspace { grid-template-columns: 18rem minmax(0, 1fr); gap: var(--space-7); }
   .result-row { grid-template-columns: 40px minmax(160px, 1.2fr) 90px 155px minmax(160px, 1fr); gap: var(--space-3); }
   .compare-result-list .result-row { grid-template-columns: 30px minmax(0, 1fr) 110px 135px; }
+  /* The compare columns are half the page each, so they are narrower than the
+     page and the compact row's fixed metric column has to give some back. */
+  .compare-result-list .result-row-compact { grid-template-columns: 28px minmax(0, 1fr) 92px 124px; }
 }
 
 @media (max-width: 900px) {
   .match-workspace, .history-layout, .skeleton-workspace { grid-template-columns: 1fr; gap: var(--space-7); }
+}
+
+/* The bar's four tracks need about 970px between them -- brand, the panel
+ * switch, the nav and the account -- and the nav's column is the only one
+ * that can give ground, because its links are nowrap. Below this width the
+ * bar overflowed the viewport by up to 60px.
+ *
+ * The status's words are the most expendable thing in it: the dot still
+ * carries the state, and the button's accessible name and its title still
+ * carry the sentence. */
+@media (max-width: 980px) {
+  .backend-status-label, .backend-status-action { display: none; }
+  .backend-status { padding: var(--space-2); }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {
@@ -44,18 +60,38 @@
   .topbar { padding: 0; }
   .topbar-inner { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3) var(--space-4); width: 100%; min-height: auto; padding: var(--space-3) var(--page-gutter) var(--space-3); }
   .brand-lockup { grid-column: 1; grid-row: 1; }
-  .main-nav { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; width: 100%; }
+  /* Row 1 is brand | account and is already full, so the panel switch takes its
+   * own full-width row rather than competing for the two columns beside them.
+   * It sits above the nav because it decides what the nav's three links mean --
+   * reading it after them would put the context below the navigation. */
+  /* Full width here, so the floor that sizes the segments on the desktop bar
+     has nothing to say -- and could only fight the width. */
+  .panel-switch { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; width: 100%; min-width: 0; }
+  .panel-toggle { flex: 1; justify-content: center; }
+  /* The nav keeps the frame it lost on the desktop bar? No -- it loses it here
+   * too. A full-width row of three bare links with the active one filled reads
+   * as a tab bar, which is what it is, and a second outline inside the
+   * account's would put the bar back to where it started. */
+  .main-nav { grid-column: 1 / -1; grid-row: 3; justify-self: stretch; width: 100%; gap: var(--space-1); }
   .nav-link { flex: 1; justify-content: center; }
-  .account-slot { grid-column: 2; grid-row: 1; }
+  .account-slot { grid-column: 2; grid-row: 1; gap: var(--space-2); }
   /* Both controls already carry an aria-label, so display:none here cost nothing
      accessible -- the name came from the attribute either way. What it did cost
      was the visible text: the label survived in the DOM only as an attribute, so
      nothing tied it to the word a sighted user actually reads and the two could
      drift apart silently. Visually hidden keeps them bound. */
   .backend-status-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* The status is a read-out, and on a phone the words cost more room than
+     they earn -- unless something is wrong, which is the one time it does. The
+     label is still in the DOM either way, so the word a sighted reader sees and
+     the sentence a screen reader hears cannot drift apart. */
+  .backend-status:not(.backend-status-online) .backend-status-label { width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; }
   .backend-status { gap: var(--space-1); padding: var(--space-1) var(--space-2); }
   .account-trigger-name { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .page-content { width: min(var(--content-width), calc(100% - var(--page-gutter) - var(--page-gutter))); padding-top: var(--space-6); }
+  /* The bar is static here -- it scrolls away with the page -- so there is
+     nothing for a scroll target to clear, and reserving the height would just
+     push it down for no reason. */
+  .page-content { width: min(var(--content-width), calc(100% - var(--page-gutter) - var(--page-gutter))); padding-top: var(--space-6); scroll-margin-top: 0; }
   .page-intro { align-items: flex-start; flex-direction: column; gap: var(--space-3); }
   .page-intro-meta { justify-content: flex-start; }
   .match-workspace, .history-layout, .skeleton-workspace { grid-template-columns: 1fr; gap: var(--space-6); }
@@ -70,18 +106,29 @@
   .result-list:not(.compare-result-list) .result-fit { grid-area: fit; }
   .result-list:not(.compare-result-list) .result-metrics { grid-area: metrics; }
   .result-list:not(.compare-result-list) .result-rationale { grid-area: rationale; }
-  .compare-result-list .result-fit, .compare-result-list .result-metrics, .compare-result-list .result-rationale { grid-column: 2; }
+    .compare-result-list .result-fit, .compare-result-list .result-metrics, .compare-result-list .result-rationale { grid-column: 2; }
+    /* The compare columns stack here, so the compact row has the full width to
+       itself and its fixed metric column can go back to being generous. */
+    .compare-result-list .result-row-compact { grid-template-columns: 32px minmax(0, 1fr); }
+    .compare-result-list .result-row-compact .result-metrics { max-width: none; }
   .result-fit { display: flex; gap: var(--space-2); }
   .result-fit .source-label { display: inline; }
   .result-metrics { max-width: 360px; }
-  .compare-toolbar { grid-template-columns: 1fr; align-items: stretch; }
-  .swap-button { justify-self: start; }
-  .compare-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .overview-primary { grid-column: 1 / -1; border-bottom: 1px solid var(--rule); }
-  /* Five deltas across two columns leaves the last one orphaned beside an empty
-     cell; let it span instead. */
-  .overview-delta:last-child { grid-column: 1 / -1; border-left: 0; }
-  .compare-columns { grid-template-columns: 1fr; gap: var(--space-6); }
+    .compare-toolbar { grid-template-columns: 1fr; align-items: stretch; }
+    .swap-button { justify-self: center; }
+    /* The overview is flex at desktop so the cell count can vary with the run.
+       It becomes a grid here, so the cells wrap into two columns. The vertical
+       separators go with it -- a left border on the first cell of a wrapped row
+       draws a stray line down the margin -- and the rows are separated by a top
+       border instead. */
+    .compare-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .overview-primary { grid-column: 1 / -1; border-bottom: 1px solid var(--rule); }
+    .overview-delta { border-left: 0; }
+    .overview-delta:nth-child(n + 4) { border-top: 1px solid var(--rule); }
+    .compare-columns { grid-template-columns: 1fr; gap: var(--space-6); }
+    /* The columns stack, so the hairline between them would run down the middle
+       of the page. */
+    .compare-columns::before { display: none; }
 
   /* Touch targets. Every control is 34px in the component layer, which is under
      the 44px iOS and 48px Android minimums. Raised only at this breakpoint so
@@ -89,8 +136,11 @@
      untouched. The similarity disclosure is deliberately excluded: it is a 13px
      inline icon inside the summary strip, and a 44px box would triple the
      strip's height. It gets a smaller bump instead (see the 480px block). */
-  .btn, .nav-link, .chip, .delete-button, .swap-button, .account-trigger,
-  .auth-mode-button, .backend-status, .account-menu-action { min-height: 44px; }
+    .btn, .nav-link, .chip, .delete-button, .swap-button, .account-trigger,
+    .auth-mode-button, .backend-status, .account-menu-action { min-height: 44px; }
+    /* The swap button is a fixed-size circle, so it needs the width raised too
+       or the touch target ends up a tall oval. */
+    .swap-button { min-inline-size: 44px; }
 
   /* The two-row mobile topbar is ~122px tall once nav links hit 44px, which on a
      667px phone is a sixth of the viewport permanently occluded by a header that
@@ -98,8 +148,10 @@
   .topbar { position: static; }
 
   /* .brand-name is nowrap, so the brand lockup cannot shrink below the width of
-     "Influencer Matcher" -- ~175px, plus the account slot, overflowed a 320px
-     viewport by a few pixels. Truncate instead of overflowing. */
+     the wordmark -- plus the account slot, that overflowed a 320px viewport by a
+     few pixels. Truncate instead of overflowing. Kept as a rule rather than
+     dropped when the wordmark changed: the constraint is the nowrap, not the
+     length, so a longer name would overflow again. */
   .brand-lockup { max-width: 100%; }
   .brand-name { overflow: hidden; text-overflow: ellipsis; }
 
@@ -117,10 +169,10 @@
   .result-fit, .result-metrics, .result-fit-line { min-width: 0; }
 
   /* Mobile trims the history ledger's own padding, not just the layout around
-     it -- .history-open's 16px block plus the 1.5 body line-height made each row
-     ~105px, so ten runs filled two phone screens. */
-  .history-open { padding: var(--space-3) var(--space-3) var(--space-3) 0; }
-  .history-row-active { padding-left: var(--space-3); }
+     it -- a row's padding plus the body line-height made each one ~105px, so ten
+     runs filled two phone screens. The padding used to be zero on the left,
+     which put the goal against the row's border; it is now even all round. */
+  .history-open { padding: var(--space-3); }
 }
 
 @media (max-width: 480px) {
@@ -132,7 +184,7 @@
   .summary-item:nth-child(even) { border-left: 1px solid var(--rule); }
   .summary-item:nth-child(odd) { border-left: 0; }
   .summary-explain-body { max-width: none; }
-  .result-row { padding: var(--space-3) 0; }
+  .result-row { padding: var(--space-3); }
   .result-metrics { gap: var(--space-1); }
   .overlap-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* Two 140px columns needed 288px, which is the entire 320px viewport once

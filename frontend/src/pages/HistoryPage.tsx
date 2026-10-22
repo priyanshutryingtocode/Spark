@@ -6,28 +6,44 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorNote, NOTE_TITLES } from "../components/SystemNote";
 import { PageIntro } from "../components/PageIntro";
 import { ResultList } from "../components/ResultList";
+import { Icon } from "../components/Icon";
 import { Skeleton } from "../components/Skeleton";
 import { RunContext } from "../components/RunContext";
 import { SummaryMetrics } from "../components/RunSummary";
 import { WarningBanner } from "../components/WarningBanner";
 import { useResource } from "../hooks/useResource";
+import { useEffect } from "react";
+
+import { PANELS, panelPath, useCorpus } from "../panels";
 import { useRuns } from "../hooks/useRuns";
-import { formatDate } from "../format";
+import { formatDay } from "../format";
 import type { RunDetail } from "../types";
 
 export function HistoryPage() {
-  const { items, isLoading, isLoadingMore, hasMore, error, loadMore, remove, refresh } = useRuns();
+  const kind = useCorpus();
+  const panel = PANELS[kind];
+  const { items, isLoading, isLoadingMore, hasMore, error, loadMore, remove, refresh } = useRuns(kind);
   // Which run is open, not the run itself. Keying the fetch off an id means a
   // second click supersedes the first -- the old `setSelected(await getRun(a))`
   // had no such guard, so opening A then B quickly could land A's slower
   // response on top of B.
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+
   const detail = useResource<RunDetail>(
     (signal) => api.getRun(openRunId!, { signal }),
-    [openRunId],
+    [openRunId, kind],
     { enabled: openRunId !== null, fallbackError: "Could not load the run." },
   );
-  const selected = detail.data;
+  // Only render a run that belongs to the panel on screen. React Router
+  // preserves this component's state across a route change, so on the render
+  // where `kind` flips the previous panel's snapshot is still loaded -- and
+  // clearing the id from an effect is too late, because that render already
+  // handed a creator to the company card and threw. Guarding here fixes the
+  // render itself; the id is cleared below once React is past it.
+  const loaded = detail.data;
+  const selected = loaded?.kind === kind ? loaded : null;
+  useEffect(() => setOpenRunId(null), [kind]);
+
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   // Delete had no in-flight state, so a double-click sent two DELETEs and the
@@ -64,7 +80,7 @@ export function HistoryPage() {
       <PageIntro
         eyebrow="History / Archive"
         title="Saved shortlists"
-        description="A durable record of the briefs you have run and the creators you kept."
+        description={`A durable record of the briefs you have run and the ${panel.plural} you kept.`}
         meta={(
           <button className="btn btn-secondary" type="button" disabled={isLoading} onClick={() => void refresh()}>
             {isLoading ? "Refreshing..." : "Refresh"}
@@ -78,15 +94,29 @@ export function HistoryPage() {
 
       <div className="history-layout">
         <aside className="history-ledger">
-          <div className="ledger-heading"><span>Saved runs</span></div>
+          <div className="ledger-heading">
+            <span>Saved runs</span>
+            {/* The count of what is loaded, with a "+" when older runs are
+                still behind "Load older runs". */}
+            <span>{items.length}{hasMore ? "+" : ""}</span>
+          </div>
           <div className="history-list">
-            {!isLoading && !items.length && <div className="empty-ledger"><p>No saved shortlists yet.</p><Link to="/search">Run a match <span aria-hidden="true">→</span></Link></div>}
+            {!isLoading && !items.length && <div className="empty-ledger"><p>No saved shortlists yet.</p><Link to={panelPath(kind)}>Run a match <Icon name="arrow-right" size={13} /></Link></div>}
             {items.map((item) => (
               <article className={`history-row ${selected?.run_id === item.run_id ? "history-row-active" : ""}`} key={item.run_id}>
                 <button className="history-open" type="button" aria-current={openRunId === item.run_id ? "true" : undefined} onClick={() => setOpenRunId(item.run_id)}>
-                  <span className="history-date">{formatDate(item.created_at)}</span>
-                  <strong className="history-goal">{item.brief.goal}</strong>
-                  <span className="history-meta">{item.n_results} results <i /> {item.n_strong} strong {item.has_warnings && <b>Notes</b>}</span>
+                  {/* The goal first: it is what the list is scanned for. The date
+                      was above it, in the largest type, and it was the least
+                      important thing in the row. */}
+                  <strong className="history-goal" title={item.brief.goal}>{item.brief.goal}</strong>
+                  <span className="history-meta">
+                    <span className="history-date">{formatDay(item.created_at)}</span>
+                    <i />
+                    {item.n_results} results
+                    <i />
+                    {item.n_strong} strong
+                    {item.has_warnings && <b>Notes</b>}
+                  </span>
                 </button>
                 <button
                   className="btn btn-ghost btn-danger-ghost delete-button"
@@ -96,7 +126,7 @@ export function HistoryPage() {
                   aria-label={`Delete run: ${item.brief.goal}`}
                   onClick={() => void deleteRun(item.run_id)}
                 >
-                  Delete
+                  <Icon name="trash" size={13} />
                 </button>
               </article>
             ))}
@@ -119,14 +149,15 @@ export function HistoryPage() {
               />
               <WarningBanner warnings={selected.warnings} />
               <SummaryMetrics summary={selected.summary} compact />
-              <ResultList run={selected} />
+              <ResultList kind={kind} run={selected} />
             </>
           )}
           {!detail.loading && !selected && (
             <EmptyState
+              icon="history"
               index="SELECT"
               title="Choose a saved run"
-              body="Open a shortlist to inspect its ranked creators and export the result."
+              body={`Open a shortlist to inspect its ranked ${panel.plural} and export the result.`}
             />
           )}
         </div>

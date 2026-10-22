@@ -16,8 +16,9 @@ def test_retrieve_candidates_passes_precomputed_query_vector(monkeypatch):
     vector = np.array([0.1, 0.2])
     seen = {}
 
-    def fake_retrieve(conn, brief, top_k, query_vec=None):
+    def fake_retrieve(conn, brief, top_k, corpus=None, query_vec=None, filters=None):
         seen["query_vec"] = query_vec
+        seen["corpus"] = corpus
         return []
 
     monkeypatch.setattr(match_service.vector_store, "get_connection", ConnectionContext)

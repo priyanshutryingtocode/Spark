@@ -15,7 +15,7 @@ clause, a changed separator, a dropped field -- fails here.
 from dataclasses import replace
 
 from src.data_generator import generate_balanced_influencers
-from src.models import CreatorSignals, Influencer
+from src.corpora import CreatorSignals, Influencer
 from src.ranking import GROUNDABLE_FIELDS
 from src.vector_store import _content_hash
 

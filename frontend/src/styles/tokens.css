@@ -7,23 +7,59 @@
   background: #0c0e10;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  /* The neutral ramp.
+   *
+   * One hue, 205-216 degrees -- the blue the canvas already had -- so every
+   * surface, rule and piece of text belongs to the same family. The old ramp
+   * had drifted: the canvas was 210 (cool) while the text was 82 (warm green),
+   * and the two greys sat at 190 and 173. A green-white on a blue-black ground
+   * is the kind of thing a reader cannot name but can feel.
+   *
+   * The steps are also evenly spaced now. The old ramp moved +47%, +24% and
+   * +68% between neighbours, and a 1.6% lightness difference is not something
+   * anyone perceives -- which is why every boundary in the app had to be a drawn
+   * 1px line rather than a plane.
+   *
+   * Contrast against --surface, before -> after: canvas 1.06 -> 1.09,
+   * surface-soft 1.03 -> 1.05, raised 1.09 -> 1.08, text 15.91 -> 15.76,
+   * muted 6.07 -> 6.40, muted-strong 9.46 -> 9.95, rule 1.37 -> 1.37,
+   * rule-strong 2.02 -> 2.07, signal 8.34 -> 8.19. Nothing moved more than
+   * 0.15 and the two secondary text colours improved.
+   */
   --canvas: #0c0e10;
-  --surface: #131619;
-  --surface-raised: #1a1f22;
-  --surface-soft: #101315;
-  --rule: #2a3134;
-  --rule-strong: #414b4e;
-  --text: #eef1e9;
-  --muted: #8d9799;
-  --muted-strong: #b4bdbc;
-  --signal: #c8f36b;
-  --signal-dim: #8da94b;
+  --surface: #15181b;
+  --surface-raised: #1b1f23;
+  --surface-soft: #101215;
+  --rule: #2b3238;
+  --rule-strong: #444d56;
+  --text: #f0f1f2;
+  --muted: #949ca3;
+  --muted-strong: #bec2c6;
+  /* Accents. Three hues, each carrying one meaning: --signal is strong/positive/
+   active, --warning is partial, --danger is weak or failed.
+
+   --signal is azure rather than the lime (#c8f36b) it replaced. Brightness was
+   matched deliberately, not by eye: lime measured 14.26:1 against --surface and
+   azure measures 8.34:1, both far above the 6.07:1 of --muted, so no label,
+   eyebrow or tag loses its margin. Choosing a cool hue also separates it from
+   --warning and --danger more cleanly than lime did -- blue against amber and
+   red is a temperature split, not a brightness one.
+
+   Contrast against --surface: --signal 8.34:1, --signal-dim 7.14:1, --signal-hover
+   10.92:1. As a button fill with --canvas ink: 8.89:1. Focus ring at 70%:
+   8.34:1, against the 3:1 WCAG 1.4.11 asks for. */
+  --signal: #5eb8f5;
+  --signal-dim: #6ea8d8;
   --warning: #e4b86c;
   --danger: #ef8175;
   --content-width: 1360px;
   --page-gutter: max(1.5rem, calc((100vw - var(--content-width)) / 2));
-  --radius-sm: 4px;
-  --radius: 6px;
+  /* Slightly larger than the 4/6 they replaced. A 4px radius on a 34px control
+     reads as a rectangle with slightly soft corners; 6 and 10 read as a
+     deliberate radius. */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
   --radius-pill: 999px;
 
 /* Type scale: a constant 1.125 ratio anchored on a 16px base, so each step is
@@ -67,24 +103,46 @@
   --motion-duration-slow: 320ms;
   --motion-ease: cubic-bezier(.2, .7, .3, 1);
   --motion-ease-out: cubic-bezier(0, 0, .2, 1);
+  /* A press is not a hover: it is faster and it ends by settling, not
+     returning. Used for :active so a click reads as a press rather than as the
+     element flickering through a hover state. */
+  --motion-press: cubic-bezier(.3, 0, .2, 1);
+  --motion-duration-press: 90ms;
 
-  /* Elevation. Four unrelated one-off shadows become three levels. */
-  --shadow-1: inset 0 1px var(--hairline);
-  --shadow-2: 0 1px 0 var(--hairline);
-  --shadow-3: 0 18px 45px var(--shadow-pop);
+  /* Elevation.
+   *
+   * The first two were not shadows at all: an inset hairline and a 1px white
+   * line under an element, both at 3% opacity. The app had 92 border
+   * declarations and these two "shadows" to its name, so every surface was
+   * flat and every boundary was drawn.
+   *
+   * Real depth is two layers -- a tight contact shadow that seats the element,
+   * and a wide ambient one that lifts it off the ground. One alone looks like a
+   * smudge. */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 32%);
+  --shadow-2: 0 2px 4px rgb(0 0 0 / 30%), 0 6px 16px rgb(0 0 0 / 26%);
+  --shadow-3: 0 4px 10px rgb(0 0 0 / 38%), 0 18px 42px rgb(0 0 0 / 34%);
+  --shadow-4: 0 8px 20px rgb(0 0 0 / 42%), 0 32px 64px rgb(0 0 0 / 40%);
+  /* The top highlight. A 4% white line along a raised surface's top edge is
+     what makes it read as lit from above, and it costs one line per surface. */
+  --edge-highlight: inset 0 1px 0 rgb(255 255 255 / 4%);
 
   /* Signal/danger tints, so the same hue is never re-typed as a raw rgb(). */
-  --signal-soft: rgb(200 243 107 / 4%);
-  --signal-line: rgb(200 243 107 / 34%);
-  --signal-glow: rgb(200 243 107 / 10%);
+  --signal-soft: rgb(94 184 245 / 4%);
+  --signal-raised: rgb(94 184 245 / 9%);
+  --signal-line: rgb(94 184 245 / 34%);
+  --signal-glow: rgb(94 184 245 / 10%);
   /* Focus ring. At 35% this measured 2.73:1 against --surface, under the 3:1
      that WCAG 1.4.11 asks of a focus indicator. The focus border was carrying it
      at 15:1, but the ring should stand on its own -- 70% is 7.4-8.1:1 and still
      reads as a glow rather than a second border. */
-  --signal-focus: rgb(200 243 107 / 70%);
-  --signal-hover: #d9ff8e;
+  --signal-focus: rgb(94 184 245 / 70%);
+  --signal-hover: #8fd0ff;
   --danger-soft: rgb(239 129 117 / 40%);
   --topbar-veil: rgb(12 14 16 / 88%);
-  --shadow-pop: 0 18px 45px rgb(0 0 0 / 42%);
+  /* The bar's height, in one place, because two things depend on it and they
+     must not drift: the bar's own height, and the scroll margin that keeps a
+     scroll target from landing underneath it. */
+  --topbar-height: 68px;
   --hairline: rgb(255 255 255 / 3%);
 }

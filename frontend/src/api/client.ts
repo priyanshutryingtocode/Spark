@@ -7,6 +7,7 @@ import type {
   Meta,
   RunDetail,
   RunListResponse,
+  CorpusKind,
 } from "../types";
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -148,29 +149,40 @@ async function downloadFile(path: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/** Every call that can be scoped to a panel takes `kind` explicitly.
+ *
+ *  Not optional and not defaulted: a call that silently omitted it would return
+ *  every corpus's runs and render them all in whichever panel happened to be
+ *  open, which is the failure the split exists to prevent. The one place a kind
+ *  is inferred is a caller that has a run in hand, which carries its own. */
 export const api = {
   probeBackend: () => probeBackend(),
-  getMeta: (options?: RequestOptions) => request<Meta>("/api/v1/meta", undefined, options),
-  createMatchJob: (brief: Brief, params: MatchParams, options?: RequestOptions) =>
+  getMeta: (kind: CorpusKind, options?: RequestOptions) =>
+    request<Meta>(`/api/v1/meta?kind=${kind}`, undefined, options),
+  createMatchJob: (brief: Brief, params: MatchParams, kind: CorpusKind, options?: RequestOptions) =>
     request<MatchJob>("/api/v1/match-jobs", {
       method: "POST",
-      body: JSON.stringify({ brief, params }),
+      body: JSON.stringify({ brief, params, kind }),
     }, options),
   getMatchJob: (jobId: string, options?: RequestOptions) =>
     request<MatchJob>(`/api/v1/match-jobs/${jobId}`, undefined, options),
-  listRuns: (cursor?: string, options?: RequestOptions) => {
-    const query = new URLSearchParams({ limit: "100" });
+  listRuns: (kind: CorpusKind, cursor?: string, options?: RequestOptions) => {
+    const query = new URLSearchParams({ limit: "100", kind });
     if (cursor) query.set("cursor", cursor);
     return request<RunListResponse>(`/api/v1/runs?${query.toString()}`, undefined, options);
   },
   getRun: (runId: string, options?: RequestOptions) =>
     request<RunDetail>(`/api/v1/runs/${runId}`, undefined, { timeoutMs: slowRequestTimeoutMs, ...options }),
-  deleteRun: (runId: string) => request<void>(`/api/v1/runs/${runId}`, { method: "DELETE" }),
-  compareRuns: (runIdA: string, runIdB: string) =>
+  deleteRun: (runId: string, options?: RequestOptions) =>
+    request<void>(`/api/v1/runs/${runId}`, { method: "DELETE" }, options),
+  compareRuns: (runIdA: string, runIdB: string, options?: RequestOptions) =>
     request<Comparison>("/api/v1/comparisons", {
       method: "POST",
       body: JSON.stringify({ run_id_a: runIdA, run_id_b: runIdB }),
-    }),
+    }, options),
+  /** One download path for both corpora: the server picks the column set from
+   *  the run's own `kind`, so the client does not have to know what is in the
+   *  sheet it is saving. */
   downloadRun: (runId: string) => downloadFile(`/api/v1/runs/${runId}/export.csv`, `shortlist-${runId}.csv`),
 };
 

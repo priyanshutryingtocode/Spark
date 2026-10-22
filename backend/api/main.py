@@ -18,6 +18,7 @@ from api.rate_limit import RateLimitExceeded, SlidingWindowRateLimiter
 from api.repositories.postgres_run_repository import InvalidCursor, PostgresRunRepository
 from api.schemas.models import (
     ComparisonRequest,
+    CorpusKind,
     ComparisonResponse,
     MatchJobRequest,
     MatchJobResponse,
@@ -29,6 +30,7 @@ from api.serialization import run_detail, run_list_item
 from api.services.compare_service import compare_runs
 from api.services.csv_export import build_csv
 from src import config, vector_store
+from src.corpora import DEFAULT_KIND, KINDS, get_corpus, kind_for_record
 from src.platforms import PLATFORMS
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ def _unavailable(code: str, message: str) -> HTTPException:
     )
 
 
-def _require_ready(request: Request) -> None:
+def _require_ready(request: Request, kind: str = DEFAULT_KIND) -> None:
     """The single readiness gate, so the two callers cannot disagree.
 
     These were two ladders over the same three conditions in a different order,
@@ -49,18 +51,24 @@ def _require_ready(request: Request) -> None:
     /match-jobs reported INDEX_NOT_READY for an empty index, so a client had to
     know two codes for one state. The mismatch check was also missing from the
     match path entirely, which is how a stale index reached ranking.
+
+    `kind` matters for the last condition only. A corpus that has never been
+    indexed has to fail here with its own name, or a Companies search on an
+    unindexed corpus returns an empty shortlist and reads as "no companies match"
+    -- which is a false statement about the data rather than about the app.
     """
     state = request.app.state
+    noun = "creators" if kind == DEFAULT_KIND else "companies"
     if not state.database_available:
-        raise _unavailable("DATABASE_UNAVAILABLE", "The creator database is unavailable.")
+        raise _unavailable("DATABASE_UNAVAILABLE", f"The {noun} database is unavailable.")
     if state.index_model_mismatch:
         raise _unavailable(
             "INDEX_MODEL_MISMATCH",
-            f"The creator index was built with a different embedding model than "
+            f"The {noun} index was built with a different embedding model than "
             f"{config.EMBED_MODEL}. It must be re-embedded before matching works.",
         )
-    if not state.db_ready or state.indexed_count <= 0:
-        raise _unavailable("NOT_READY", "The creator index is not ready.")
+    if _count_for(state, kind) <= 0:
+        raise _unavailable("NOT_READY", f"The {noun} index is not ready.")
 
 
 def create_app(
@@ -68,6 +76,7 @@ def create_app(
     job_manager=None,
     initialize_database: bool = True,
     indexed_count: int | None = None,
+    indexed_counts: dict[str, int] | None = None,
 ) -> FastAPI:
     ip_rate_limiter = SlidingWindowRateLimiter(
         config.MAX_MATCH_JOBS_PER_IP_PER_HOUR,
@@ -84,6 +93,25 @@ def create_app(
         application.state.database_available = False
         application.state.index_model_mismatch = False
         application.state.indexed_count = indexed_count or 0
+        # Per-corpus counts. `indexed_count` keeps its original meaning -- the
+        # creator index -- because it is what the readiness gate and the injected
+        # `indexed_count=` test argument mean. A corpus absent from this map reads
+        # as empty rather than falling back to the creator count, so an app
+        # reporting 10 indexed creators does not also claim 10 companies.
+        # An injected `indexed_count=` means the creator index and nothing else,
+        # so it seeds the creator entry and leaves every other corpus reading as
+        # empty. Fabricating a company count from it would let a Companies panel
+        # render "500 companies indexed" against an index that was never built.
+        # Assigned here, before the probe: `initialize_database` overwrites it
+        # with a real count of every corpus, but when initialisation is off this
+        # is the only place the injected count lands. Not synced afterwards --
+        # doing that overwrote an explicit `indexed_counts` with `indexed_count`,
+        # so an app declaring 2000 creators reported 0.
+        application.state.indexed_counts = (
+            indexed_counts
+            if indexed_counts is not None
+            else ({DEFAULT_KIND: indexed_count} if indexed_count else {})
+        )
         application.state.index_checked_at = 0.0
         application.state.startup_error = None
         if initialize_database:
@@ -91,9 +119,11 @@ def create_app(
             application.state.run_repository = repo
             try:
                 if config.RUN_SCHEMA_ON_STARTUP:
-                    application.state.indexed_count = await asyncio.to_thread(_initialize_database, repo)
+                    counted = await asyncio.to_thread(_initialize_database, repo)
                 else:
-                    application.state.indexed_count = await asyncio.to_thread(_check_database)
+                    counted = await asyncio.to_thread(_check_database)
+                application.state.indexed_counts = counted
+                application.state.indexed_count = counted.get(DEFAULT_KIND, 0)
                 application.state.database_available = True
                 application.state.index_checked_at = time.monotonic()
                 application.state.db_ready = application.state.indexed_count > 0
@@ -198,11 +228,15 @@ def create_app(
         }
 
     @application.get("/api/v1/meta", response_model=MetaResponse)
-    def meta(request: Request):
+    def meta(request: Request, kind: CorpusKind = DEFAULT_KIND):
         _refresh_index_state(request)
-        ready_state = request.app.state.db_ready
+        corpus = get_corpus(kind)
         return {
-            "platforms": ["Any", *PLATFORMS],
+            # Empty for a corpus with no platform facet. A company is not on
+            # TikTok, so offering the list would be offering a filter that does
+            # nothing -- and `facet_is_hard_filter` is False for prospects, so a
+            # value sent here is silently ignored rather than honoured.
+            "platforms": ["Any", *PLATFORMS] if corpus.facet_column == "platform" else [],
             "defaults": {
                 # Empty, not sample briefs. The Search page offers starter
                 # prompts, and pre-filling would make it ambiguous whether the
@@ -235,12 +269,17 @@ def create_app(
                 "goal_max_length": config.MAX_GOAL_LENGTH,
             },
             "index": {
+                # Per corpus, and from the same count the readiness gate uses.
+                # Deriving status from the creator-only `db_ready` reported
+                # "ready" beside "count: 0", which showed a green pill and
+                # enabled Search for a corpus that had nothing indexed -- and
+                # the POST was then refused by `_require_ready`.
                 "status": (
                     "reindex_required"
                     if request.app.state.index_model_mismatch
-                    else "ready" if ready_state else "unavailable"
+                    else "ready" if _count_for(request.app.state, kind) > 0 else "unavailable"
                 ),
-                "count": request.app.state.indexed_count,
+                "count": _count_for(request.app.state, kind),
                 "embedding_model": config.EMBED_MODEL,
                 "embed_dimensions": config.EMBED_DIMENSIONS,
             },
@@ -256,15 +295,11 @@ def create_app(
         status_code=status.HTTP_202_ACCEPTED,
     )
     def create_match_job(payload: MatchJobRequest, request: Request):
-        _validate_brief(payload.brief.goal, payload.brief.platform)
+        corpus = get_corpus(payload.kind)
+        _validate_brief(payload.brief.goal, payload.brief.platform, corpus)
         owner_id = current_user_id(request)
-        if config.AUTH_REQUIRED and not owner_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "AUTH_REQUIRED", "message": "Sign in before running a match."},
-            )
         _refresh_index_state(request)
-        _require_ready(request)
+        _require_ready(request, corpus.kind)
         manager = request.app.state.job_manager
         if manager is None:
             raise HTTPException(
@@ -281,7 +316,7 @@ def create_app(
                 ) from exc
         try:
             brief = payload.brief.to_domain()
-            return manager.submit(brief, payload.params, owner_id=owner_id)
+            return manager.submit(brief, payload.params, owner_id=owner_id, corpus=corpus)
         except JobQueueFullError as exc:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -302,11 +337,14 @@ def create_app(
         request: Request,
         limit: int = Query(default=20, ge=1, le=100),
         cursor: str | None = None,
+        kind: CorpusKind | None = None,
     ):
         owner_id = current_user_id(request)
         try:
             repository = _repository(request)
-            records, next_cursor = repository.list(limit=limit, cursor=cursor, owner_id=owner_id)
+            records, next_cursor = repository.list(
+                limit=limit, cursor=cursor, owner_id=owner_id, kind=kind,
+            )
         except InvalidCursor as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -356,7 +394,23 @@ def create_app(
         run_b = repository.get(payload.run_id_b, owner_id=owner_id)
         if run_a is None or run_b is None:
             raise _not_found("RUN_NOT_FOUND", "One or both runs were not found.")
-        return compare_runs(run_a, run_b)
+        # Refused rather than answered. The comparison joins the two runs on
+        # candidate keys and differences their summaries; across two corpora
+        # every key is distinct, so the honest answer is an empty overlap and
+        # a meaningless delta row rather than a 200. Silently succeeding here
+        # would look like "these two briefs found nothing in common".
+        kind_a = kind_for_record(run_a)
+        kind_b = kind_for_record(run_b)
+        if kind_a != kind_b:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "CROSS_CORPUS_COMPARE",
+                    "message": "Both runs must come from the same panel. "
+                               f"One searched {kind_a} and the other {kind_b}.",
+                },
+            )
+        return compare_runs(run_a, run_b, get_corpus(kind_a))
 
     return application
 
@@ -379,18 +433,34 @@ def _validate_public_configuration() -> None:
         raise RuntimeError("Public deployment configuration is missing: " + ", ".join(missing))
 
 
-def _initialize_database(repository) -> int:
+def _count_all_corpora(conn) -> dict[str, int]:
+    """Every corpus's row count, in one connection.
+
+    Both startup probes and `_refresh_index_state` use this so there is a single
+    definition of "how many records are indexed". Counting only the creator table
+    and letting the next refresh fill in the rest leaves the company panel showing
+    an empty index for as long as the refresh cache holds.
+    """
+    return {
+        corpus.kind: vector_store.count_records(conn, table=corpus.table)
+        for corpus in KINDS.values()
+    }
+
+
+def _initialize_database(repository) -> dict[str, int]:
     repository.ensure_schema()
     with vector_store.get_connection() as conn:
         vector_store.init_schema(conn)
-        vector_store.assert_index_matches_config(conn)
-        return vector_store.count_influencers(conn)
+        for corpus in KINDS.values():
+            vector_store.assert_index_matches_config(conn, table=corpus.table)
+        return _count_all_corpora(conn)
 
 
-def _check_database() -> int:
+def _check_database() -> dict[str, int]:
     with vector_store.get_connection() as conn:
-        vector_store.assert_index_matches_config(conn)
-        return vector_store.count_influencers(conn)
+        for corpus in KINDS.values():
+            vector_store.assert_index_matches_config(conn, table=corpus.table)
+        return _count_all_corpora(conn)
 
 
 def _rss_mb() -> float | None:
@@ -416,8 +486,16 @@ def _refresh_index_state(request: Request) -> None:
         return
     try:
         with vector_store.get_connection() as conn:
-            vector_store.assert_index_matches_config(conn)
-            application.state.indexed_count = vector_store.count_influencers(conn)
+            # Every corpus, not just the default table: migration 009 makes
+            # prospects.embedding a literal VECTOR(768), and a deployment with a
+            # different EMBED_DIMENSIONS must be caught on both.
+            for corpus in KINDS.values():
+                vector_store.assert_index_matches_config(conn, table=corpus.table)
+            counts = _count_all_corpora(conn)
+        application.state.indexed_counts = counts
+        # Kept in step with the creator count so the readiness endpoint and the
+        # injected `indexed_count=` path keep meaning what they meant.
+        application.state.indexed_count = counts.get(DEFAULT_KIND, 0)
         application.state.database_available = True
         application.state.index_checked_at = now
         application.state.startup_error = None
@@ -458,7 +536,7 @@ def _repository(request: Request):
     return repository
 
 
-def _validate_brief(goal: str, platform: str) -> None:
+def _validate_brief(goal: str, platform: str, corpus=None) -> None:
     """Free-text briefs are open-ended; only length and platform are checked.
 
     The old check rejected anything outside the generator's 30 verticals,
@@ -487,11 +565,28 @@ def _validate_brief(goal: str, platform: str) -> None:
             status_code=422,
             detail={"code": "GOAL_EMPTY", "message": "Describe what you are promoting in words."},
         )
+    # Same predicate retrieval uses. A corpus with a facet it does not filter on
+    # would otherwise have its brief validated against a list it ignores.
+    if corpus is not None and not corpus.filters_by_facet():
+        return
     if platform not in {"Any", *PLATFORMS}:
         raise HTTPException(
             status_code=422,
             detail={"code": "INVALID_PLATFORM", "message": "Choose a supported platform."},
         )
+
+
+
+def _count_for(state, kind: str) -> int:
+    """How many records of `kind` are indexed.
+
+    Reads the per-corpus map and falls back to zero for a corpus the app has no
+    count for. The fallback is zero rather than `state.indexed_count` on purpose:
+    the creator count means creators, and reusing it would let an unindexed
+    corpus pass the readiness gate.
+    """
+    counts = getattr(state, "indexed_counts", None) or {}
+    return counts.get(kind, 0)
 
 
 def _not_found(code: str, message: str) -> HTTPException:

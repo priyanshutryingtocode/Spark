@@ -1,33 +1,57 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "../api/client";
-import type { RunListItem } from "../types";
+import type { CorpusKind, RunListItem } from "../types";
 
-export function useRuns() {
+/** `kind` is a parameter, not something read from a context: History is the one
+ *  page where showing the other panel's runs is a silent data leak rather than a
+ *  visible bug, since both lists are valid run lists. */
+export function useRuns(kind: CorpusKind) {
   const [items, setItems] = useState<RunListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [itemsKind, setItemsKind] = useState(kind);
+  const itemsKindRef = useRef(kind);
+  const requestId = useRef(0);
+  const activeRequest = useRef<AbortController | null>(null);
 
   const load = useCallback(async (cursor?: string, append = false) => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const id = ++requestId.current;
     if (append) setIsLoadingMore(true);
     else setIsLoading(true);
     setError(null);
     try {
-      const response = await api.listRuns(cursor);
-      setItems((current) => (append ? [...current, ...response.items] : response.items));
+      const response = await api.listRuns(kind, cursor, { signal: controller.signal });
+      if (controller.signal.aborted || requestId.current !== id) return;
+      setItems((current) => (append && itemsKindRef.current === kind ? [...current, ...response.items] : response.items));
+      itemsKindRef.current = kind;
+      setItemsKind(kind);
       setNextCursor(response.next_cursor);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not load run history.");
+      if (!controller.signal.aborted && requestId.current === id) {
+        setError(caught instanceof ApiError ? caught.message : "Could not load run history.");
+      }
     } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
+      if (requestId.current === id) {
+        activeRequest.current = null;
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
     }
-  }, []);
+  }, [kind]);
 
   useEffect(() => {
     void load();
+    return () => {
+      ++requestId.current;
+      activeRequest.current?.abort();
+      activeRequest.current = null;
+    };
   }, [load]);
 
   const remove = useCallback(async (runId: string) => {
@@ -41,13 +65,13 @@ export function useRuns() {
   }, []);
 
   return {
-    items,
-    isLoading,
-    isLoadingMore,
-    hasMore: nextCursor !== null,
+    items: itemsKind === kind ? items : [],
+    isLoading: isLoading || itemsKind !== kind,
+    isLoadingMore: itemsKind === kind && isLoadingMore,
+    hasMore: itemsKind === kind && nextCursor !== null,
     error,
     refresh: () => load(),
-    loadMore: () => (nextCursor ? load(nextCursor, true) : Promise.resolve()),
+    loadMore: () => (itemsKind === kind && nextCursor ? load(nextCursor, true) : Promise.resolve()),
     remove,
   };
 }

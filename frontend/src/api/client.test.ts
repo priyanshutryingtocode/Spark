@@ -89,7 +89,7 @@ describe("api request timeouts", () => {
     const fetchMock = hangingFetch();
     vi.stubGlobal("fetch", fetchMock);
 
-    const pending = api.getMeta();
+    const pending = api.getMeta("creator");
     const assertion = expect(pending).rejects.toThrow(/did not respond within \d+s/);
     // Past the 30s default ceiling.
     await vi.advanceTimersByTimeAsync(60_000);
@@ -106,13 +106,13 @@ describe("api request timeouts", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(api.getMeta()).resolves.toBeDefined();
+    await expect(api.getMeta("creator")).resolves.toBeDefined();
   });
 
   it("turns a network failure into a readable ApiError rather than a raw TypeError", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 
-    await expect(api.listRuns()).rejects.toThrow(/could not be reached/);
+    await expect(api.listRuns("creator")).rejects.toThrow(/could not be reached/);
   });
 
   it("gives a run detail its own, longer ceiling", async () => {

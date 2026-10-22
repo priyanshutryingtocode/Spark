@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect, useRef } from "react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SearchPage } from "./SearchPage";
@@ -63,7 +64,10 @@ function makeMeta(overrides: Partial<Meta> = {}): Meta {
       goal_min_length: 8, goal_max_length: 600,
       audience_max_length: 300, vibe_max_length: 500,
     },
-    index: { status: "ready", count: 500, embedding_model: "gemini-embedding-001", embed_dimensions: 768 },
+    // Only the two fields `Meta["index"]` declares. The default in `makeMeta`
+    // carries the embedding metadata as well, but the type does not, so naming
+    // them in an override is a type error rather than a wider fixture.
+    index: { status: "ready", count: 500 },
     ranking: { model: "gemini-2.5-flash-lite", fit_levels: ["strong", "partial", "weak", "unknown"] },
     ...overrides,
   } as Meta;
@@ -383,5 +387,216 @@ describe("SearchPage", () => {
     await screen.findByLabelText(/promoting/i);
     await waitFor(() => expect(screen.getByText(/yoga for beginners/)).toBeTruthy());
     expect(screen.queryByText("Loading your shortlist")).toBeNull();
+  });
+});
+
+/** Meta as the server returns it for a corpus with no platform facet. */
+function companyMeta() {
+  return makeMeta({
+    platforms: [],
+    // Only the two fields `Meta["index"]` declares. The default in `makeMeta`
+    // carries the embedding metadata as well, but the type does not, so naming
+    // them in an override is a type error rather than a wider fixture.
+    index: { status: "ready", count: 500 },
+  });
+}
+
+describe("SearchPage on the Companies panel", () => {
+  // The existing suite's `afterEach(cleanup)` is scoped inside its own describe,
+  // so these blocks need their own or the previous test's DOM is still mounted.
+  afterEach(() => cleanup());
+
+  beforeEach(() => {
+    apiMocks.getMeta.mockReset();
+    apiMocks.getRun.mockReset();
+    matchJobState.job = null;
+    matchJobState.error = null;
+    matchJobState.isRunning = false;
+    matchJobState.start.mockReset();
+  });
+
+  function renderCompany(route = "/companies/search") {
+    return render(
+      <MemoryRouter initialEntries={[route]}>
+        <SearchPage />
+      </MemoryRouter>,
+    );
+  }
+
+  it("scopes meta to the companies corpus", async () => {
+    apiMocks.getMeta.mockResolvedValue(companyMeta());
+    renderCompany();
+
+    await waitFor(() => expect(apiMocks.getMeta).toHaveBeenCalled());
+    expect(apiMocks.getMeta.mock.calls[0][0]).toBe("prospect");
+  });
+
+  it("reports the company index count in the panel's own noun", async () => {
+    apiMocks.getMeta.mockResolvedValue(companyMeta());
+    renderCompany();
+
+    expect(await screen.findByText("500 companies indexed")).toBeTruthy();
+    expect(screen.queryByText("creators indexed")).toBeNull();
+  });
+
+  it("hides the platform facet, which the server would ignore anyway", async () => {
+    apiMocks.getMeta.mockResolvedValue(companyMeta());
+    renderCompany();
+
+    await waitFor(() => expect(apiMocks.getMeta).toHaveBeenCalled());
+    // Present but not a working filter: `facet_is_hard_filter` is False for
+    // prospects, so any value chosen here is discarded server-side.
+    expect(screen.queryByLabelText(/platform/i)).toBeNull();
+  });
+
+  it("offers sales-shaped starter briefs, not creator ones", async () => {
+    apiMocks.getMeta.mockResolvedValue(companyMeta());
+    renderCompany();
+
+    // The form is gated on meta having loaded, so the chips do not exist until
+    // then -- awaited via the field they sit beside.
+    await screen.findByLabelText(/promoting/i);
+    const chips = screen.getAllByRole("button", { name: /warehouse robotics|payroll automation|compliance tooling|field service/i });
+    expect(chips.length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /thrifted-vintage/i })).toBeNull();
+  });
+
+  it("submits with the companies kind", async () => {
+    apiMocks.getMeta.mockResolvedValue(companyMeta());
+    renderCompany();
+
+    const goal = await screen.findByLabelText(/promoting/i);
+    fireEvent.change(goal, { target: { value: "warehouse robotics for mid-size logistics firms" } });
+    fireEvent.click(screen.getByRole("button", { name: /run match/i }));
+
+    await waitFor(() => expect(matchJobState.start).toHaveBeenCalled());
+    // Omitting it would search creators and return a plausible wrong shortlist.
+    expect(matchJobState.start.mock.calls[0][2]).toBe("prospect");
+  });
+
+  it("announces the depth sliders in the panel's noun", async () => {
+    apiMocks.getMeta.mockResolvedValue(companyMeta());
+    renderCompany();
+
+    await waitFor(() => expect(apiMocks.getMeta).toHaveBeenCalled());
+    expect(screen.getByRole("slider", { name: /candidates retrieved/i }).getAttribute("aria-valuetext")).toMatch(/companies$/);
+  });
+});
+
+describe("SearchPage on the Creators panel", () => {
+  afterEach(() => cleanup());
+
+  beforeEach(() => {
+    apiMocks.getMeta.mockReset();
+    matchJobState.job = null;
+    matchJobState.error = null;
+    matchJobState.isRunning = false;
+    matchJobState.start.mockReset();
+  });
+
+  it("scopes meta to the creators corpus and keeps the platform facet", async () => {
+    apiMocks.getMeta.mockResolvedValue(makeMeta());
+    render(
+      <MemoryRouter initialEntries={["/creators/search"]}>
+        <SearchPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(apiMocks.getMeta).toHaveBeenCalled());
+    expect(apiMocks.getMeta.mock.calls[0][0]).toBe("creator");
+    expect(await screen.findByLabelText(/platform/i)).toBeTruthy();
+    expect(screen.getByRole("slider", { name: /candidates retrieved/i }).getAttribute("aria-valuetext")).toMatch(/creators$/);
+  });
+});
+
+/** Sets a controlled input's value through the native setter.
+ *
+ *  React tracks the value it last rendered and can suppress the change event
+ *  when the new value looks unchanged; assigning through the prototype setter
+ *  and dispatching bypasses that tracker.
+ */
+function setValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+  setter.call(input, value);
+  fireEvent.input(input);
+}
+
+describe("SearchPage brief fields across a panel switch", () => {
+  afterEach(() => cleanup());
+
+  beforeEach(() => {
+    apiMocks.getMeta.mockReset();
+    matchJobState.job = null;
+    matchJobState.error = null;
+    matchJobState.isRunning = false;
+    matchJobState.start.mockReset();
+  });
+
+  /** Real navigation, because `initialEntries` is only read on first mount --
+   *  a rerender with new entries leaves the router where it was. The trigger
+   *  lives inside the matched route so it survives the switch itself. */
+  function Harness({ capture }: { capture: (go: () => void) => void }) {
+    // No trailing comma after the JSX root: inside `return (...)` it parses as
+    // a comma operator with no right operand. The other `</MemoryRouter>,` lines
+    // in this file are arguments to `render(...)`, where it is fine.
+    return (
+      <MemoryRouter initialEntries={["/creators/search"]}>
+        <Routes>
+          <Route path="/:panel/search" element={<Paneled capture={capture} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+  }
+
+  function Paneled({ capture }: { capture: (go: () => void) => void }) {
+    const navigate = useNavigate();
+    const go = useRef<() => void>(() => navigate("/companies/search"));
+    go.current = () => navigate("/companies/search");
+    useEffect(() => capture(() => go.current()), [capture]);
+    return <SearchPage />;
+  }
+
+  function defaults(overrides: Partial<Meta["defaults"]> = {}) {
+    return makeMeta({ defaults: { goal: "", audience: "Gen Z", vibe: "playful", top_k: 10, top_n: 5, ...overrides } });
+  }
+
+  it("keeps a typed goal, audience and vibe when meta reloads", async () => {
+    apiMocks.getMeta.mockResolvedValue(defaults());
+    let switchPanel = () => {};
+    render(<Harness capture={(go) => { switchPanel = go; }} />);
+
+    // Wait for meta's onLoad before typing. The form appears on the same paint
+    // that sets meta.data, but onLoad runs from the effect after it, so typing
+    // earlier is overwritten by the defaults a tick later.
+    const audience = (await screen.findByDisplayValue("Gen Z")) as HTMLInputElement;
+    const goal = screen.getByLabelText(/promoting/i) as HTMLTextAreaElement;
+    const vibe = screen.getByLabelText(/tone/i) as HTMLTextAreaElement;
+
+    fireEvent.change(goal, { target: { value: "a slow-fashion label" } });
+    setValue(audience, "Gen Z buyers");
+    fireEvent.change(vibe, { target: { value: "playful" } });
+
+    // Audience and vibe were overwritten unconditionally on every meta load
+    // while goal was preserved, so a panel switch silently replaced two thirds
+    // of a brief the user had written.
+    act(() => switchPanel());
+    await waitFor(() => expect(apiMocks.getMeta).toHaveBeenCalledTimes(2));
+
+    expect(goal.value).toBe("a slow-fashion label");
+    expect(audience.value).toBe("Gen Z buyers");
+    expect(vibe.value).toBe("playful");
+  });
+
+  it("still fills empty fields from server defaults", async () => {
+    apiMocks.getMeta.mockResolvedValue(defaults());
+    let switchPanel = () => {};
+    render(<Harness capture={(go) => { switchPanel = go; }} />);
+    const audience = (await screen.findByDisplayValue("Gen Z")) as HTMLInputElement;
+
+    act(() => switchPanel());
+    await waitFor(() => expect(apiMocks.getMeta).toHaveBeenCalledTimes(2));
+
+    // Preserve-what-was-typed must not become never-seed.
+    expect(audience.value).toBe("Gen Z");
   });
 });

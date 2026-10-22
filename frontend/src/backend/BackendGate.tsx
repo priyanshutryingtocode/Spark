@@ -6,7 +6,7 @@ export function BackendGate() {
   return (
     <section className="backend-gate" aria-labelledby="backend-gate-title">
       <div className="backend-gate-panel">
-        <p className="eyebrow">Influencer Matcher</p>
+        <p className="eyebrow">Spark</p>
         <h1 id="backend-gate-title">Backend resting</h1>
         <p className="backend-gate-copy">
           This project runs on Render that sleeps when idle. Start it - should take around 30 seconds or a minute.

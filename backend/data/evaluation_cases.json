@@ -1,163 +1,290 @@
 [
-  {
-    "id": "sustainable-fashion",
-    "goal": "a thrifted-vintage clothing label for Gen Z who care about slow fashion and low-waste packaging",
-    "platform": "Any",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "thrifted",
-      "vintage",
-      "secondhand",
-      "slow fashion",
-      "eco",
-      "streetwear",
-      "capsule wardrobe"
-    ],
-    "hard": true
-  },
-  {
-    "id": "fitness-tiktok",
-    "goal": "an at-home strength training app for busy millennials who want to build a gym habit without ever leaving the house",
-    "platform": "TikTok",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "strength",
-      "gym",
-      "calisthenics",
-      "HIIT",
-      "mobility",
-      "stretching",
-      "breathwork"
-    ],
-    "hard": true
-  },
-  {
-    "id": "food-tiktok",
-    "goal": "fast, satisfying, easy-to-follow recipes for home cooks who want dinner on the table in twenty minutes",
-    "platform": "TikTok",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "recipes",
-      "meal prep",
-      "desserts",
-      "healthy recipes",
-      "protein",
-      "macros",
-      "diet"
-    ],
-    "hard": true
-  },
-  {
-    "id": "tech-x",
-    "goal": "sharp, opinionated real-time commentary on software and gadgets for tech professionals and early adopters",
-    "platform": "X",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "AI",
-      "gadgets",
-      "smart home",
-      "Python",
-      "reviews",
-      "design"
-    ],
-    "hard": false
-  },
-  {
-    "id": "travel-youtube",
-    "goal": "budget-friendly trip planning and honest destination reviews for solo travelers",
-    "platform": "YouTube",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "solo travel",
-      "backpacking",
-      "budget",
-      "digital nomad",
-      "travel",
-      "reviews"
-    ],
-    "hard": false
-  },
-  {
-    "id": "beauty-instagram",
-    "goal": "skincare and makeup tutorials that teach young women inclusively and authentically",
-    "platform": "Instagram",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "skincare",
-      "makeup",
-      "clean beauty",
-      "K-beauty",
-      "fragrance",
-      "curly hair"
-    ],
-    "hard": false
-  },
-  {
-    "id": "gaming-twitch",
-    "goal": "live video-game streams with skilled, high-energy commentary for gamers aged 18-35",
-    "platform": "Twitch",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "FPS",
-      "RPG",
-      "esports",
-      "streaming",
-      "indie games",
-      "mods"
-    ],
-    "hard": false
-  },
-  {
-    "id": "programming-youtube",
-    "goal": "deep-dive coding tutorials for developers and students learning to program",
-    "platform": "YouTube",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "Python",
-      "JavaScript",
-      "C++",
-      "algorithms",
-      "system design",
-      "AI"
-    ],
-    "hard": false
-  },
-  {
-    "id": "pets-instagram",
-    "goal": "heartwarming and funny posts for pet owners and animal lovers",
-    "platform": "Instagram",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "dogs",
-      "cats",
-      "training",
-      "rescue"
-    ],
-    "hard": false
-  },
-  {
-    "id": "finance-linkedin",
-    "goal": "professional, data-driven content on investing and building a portfolio for people serious about wealth",
-    "platform": "LinkedIn",
-    "audience": "",
-    "vibe": "",
-    "expected_tags": [
-      "investing",
-      "stocks",
-      "budgeting",
-      "crypto",
-      "FIRE",
-      "property"
-    ],
-    "hard": false
-  }
+    {
+        "id": "sustainable-fashion",
+        "goal": "a thrifted-vintage clothing label for Gen Z who care about slow fashion and low-waste packaging",
+        "platform": "Any",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "thrifted",
+            "vintage",
+            "secondhand",
+            "slow fashion",
+            "eco",
+            "streetwear",
+            "capsule wardrobe"
+        ],
+        "hard": true,
+        "expected_audience": {
+            "age": [
+                "18-24",
+                "25-34"
+            ],
+            "gender": "female",
+            "countries": [
+                "USA",
+                "UK",
+                "Germany",
+                "France"
+            ]
+        }
+    },
+    {
+        "id": "fitness-tiktok",
+        "goal": "an at-home strength training app for busy millennials who want to build a gym habit without ever leaving the house",
+        "platform": "TikTok",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "strength",
+            "gym",
+            "calisthenics",
+            "HIIT",
+            "mobility",
+            "stretching",
+            "breathwork"
+        ],
+        "hard": true,
+        "expected_audience": {
+            "age": [
+                "18-24"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "UK",
+                "India",
+                "Brazil"
+            ]
+        }
+    },
+    {
+        "id": "food-tiktok",
+        "goal": "fast, satisfying, easy-to-follow recipes for home cooks who want dinner on the table in twenty minutes",
+        "platform": "TikTok",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "recipes",
+            "meal prep",
+            "desserts",
+            "healthy recipes",
+            "protein",
+            "macros",
+            "diet"
+        ],
+        "hard": true,
+        "expected_audience": {
+            "age": [
+                "25-34",
+                "35-44"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "UK",
+                "India"
+            ]
+        }
+    },
+    {
+        "id": "tech-x",
+        "goal": "sharp, opinionated real-time commentary on software and gadgets for tech professionals and early adopters",
+        "platform": "X",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "AI",
+            "gadgets",
+            "smart home",
+            "Python",
+            "reviews",
+            "design"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "25-34",
+                "35-44"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "UK",
+                "Germany",
+                "India"
+            ]
+        }
+    },
+    {
+        "id": "travel-youtube",
+        "goal": "budget-friendly trip planning and honest destination reviews for solo travelers",
+        "platform": "YouTube",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "solo travel",
+            "backpacking",
+            "budget",
+            "digital nomad",
+            "travel",
+            "reviews"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "25-34",
+                "35-44"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "UK",
+                "Thailand",
+                "Germany"
+            ]
+        }
+    },
+    {
+        "id": "beauty-instagram",
+        "goal": "skincare and makeup tutorials that teach young women inclusively and authentically",
+        "platform": "Instagram",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "skincare",
+            "makeup",
+            "clean beauty",
+            "K-beauty",
+            "fragrance",
+            "curly hair"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "18-24",
+                "25-34"
+            ],
+            "gender": "female",
+            "countries": [
+                "USA",
+                "UK",
+                "France",
+                "Brazil",
+                "India"
+            ]
+        }
+    },
+    {
+        "id": "gaming-twitch",
+        "goal": "live video-game streams with skilled, high-energy commentary for gamers aged 18-35",
+        "platform": "Twitch",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "FPS",
+            "RPG",
+            "esports",
+            "streaming",
+            "indie games",
+            "mods"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "18-24"
+            ],
+            "gender": "male",
+            "countries": [
+                "USA",
+                "Germany",
+                "UK",
+                "Brazil"
+            ]
+        }
+    },
+    {
+        "id": "programming-youtube",
+        "goal": "deep-dive coding tutorials for developers and students learning to program",
+        "platform": "YouTube",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "Python",
+            "JavaScript",
+            "C++",
+            "algorithms",
+            "system design",
+            "AI"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "25-34",
+                "35-44"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "Germany",
+                "India",
+                "UK"
+            ]
+        }
+    },
+    {
+        "id": "pets-instagram",
+        "goal": "heartwarming and funny posts for pet owners and animal lovers",
+        "platform": "Instagram",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "dogs",
+            "cats",
+            "training",
+            "rescue"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "25-34",
+                "35-44",
+                "45-54"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "UK",
+                "Brazil"
+            ]
+        }
+    },
+    {
+        "id": "finance-linkedin",
+        "goal": "professional, data-driven content on investing and building a portfolio for people serious about wealth",
+        "platform": "LinkedIn",
+        "audience": "",
+        "vibe": "",
+        "expected_tags": [
+            "investing",
+            "stocks",
+            "budgeting",
+            "crypto",
+            "FIRE",
+            "property"
+        ],
+        "hard": false,
+        "expected_audience": {
+            "age": [
+                "35-44",
+                "45-54"
+            ],
+            "gender": "any",
+            "countries": [
+                "USA",
+                "UK",
+                "India"
+            ]
+        }
+    }
 ]

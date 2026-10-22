@@ -58,9 +58,13 @@ export function AccountMenu({ user, signOut }: AccountMenuProps) {
     // on mount, and the unguarded version stole focus to the account button
     // every time the page loaded -- including straight after the skip link,
     // which is the one place focus must not be moved from.
+    //
+    // preventScroll for the same reason the sign-out focus above has it: the
+    // trigger is in the topbar, which is static on a phone and scrolls away,
+    // so focusing it would pull the page back up to the bar.
     if (wasOpenRef.current) {
       wasOpenRef.current = false;
-      triggerRef.current?.focus();
+      triggerRef.current?.focus({ preventScroll: true });
     }
   }, [open]);
 

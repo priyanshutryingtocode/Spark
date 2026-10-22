@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Influencer Matcher">
-  <rect width="32" height="32" rx="4" fill="#c8f36b"/>
-  <g fill="none" stroke="#0c0e10" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
-    <path d="M9 24V8"/>
-    <path d="M15 24V8L19 14L23 8V24"/>
-  </g>
-</svg>

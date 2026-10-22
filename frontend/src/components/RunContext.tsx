@@ -1,4 +1,5 @@
 import type { RunDetail } from "../types";
+import { Icon } from "./Icon";
 import { formatDate } from "../format";
 
 interface RunContextProps {
@@ -27,6 +28,7 @@ export function RunContext({ run, label, exporting = false, onExport }: RunConte
         </p>
       </div>
       <button className="btn btn-secondary" type="button" onClick={onExport} disabled={exporting} aria-busy={exporting}>
+        <Icon name="download" size={14} />
         {exporting ? "Exporting..." : "Export CSV"}
       </button>
     </div>

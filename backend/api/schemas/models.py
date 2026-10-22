@@ -13,6 +13,10 @@ FitLevel = Literal["strong", "partial", "weak", "unknown"]
 # could confirm. The UI marks it so a reader knows the claim is unsupported.
 RankingSource = Literal["llm", "llm_unverified", "filled", "fallback"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+#: Which searchable corpus a request or run refers to. Duplicated here rather
+#: than imported from `src.corpora` so the wire contract is readable on its own;
+#: `src.corpora.KINDS` is asserted to cover it in tests.
+CorpusKind = Literal["creator", "prospect"]
 
 
 class BriefPayload(BaseModel):
@@ -33,6 +37,22 @@ class BriefPayload(BaseModel):
     audience: str = Field(default="", max_length=config.AUDIENCE_MAX_LENGTH)
     vibe: str = Field(default="", max_length=config.VIBE_MAX_LENGTH)
 
+    # Structured, optional. The free-text fields above still drive the embedding;
+    # these drive the filters and the rerank. Each corpus reads only its own, so
+    # one payload serves both without either vocabulary leaking into the other.
+    audience_age: list[str] = Field(default_factory=list)
+    audience_gender: str = ""
+    audience_countries: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    min_reach_ratio: float = 0.0
+
+    target_industries: list[str] = Field(default_factory=list)
+    #: The company size band, as (min, max) headcount. None when unspecified.
+    target_size: tuple[int, int] | None = None
+    target_countries: list[str] = Field(default_factory=list)
+    budget_band: str = ""
+    buyer_roles: list[str] = Field(default_factory=list)
+
     def to_domain(self):
         from src.models import Brief
 
@@ -41,6 +61,16 @@ class BriefPayload(BaseModel):
             platform=self.platform,
             audience=self.audience,
             vibe=self.vibe,
+            audience_age=list(self.audience_age),
+            audience_gender=self.audience_gender,
+            audience_countries=list(self.audience_countries),
+            languages=list(self.languages),
+            min_reach_ratio=self.min_reach_ratio,
+            target_industries=list(self.target_industries),
+            target_size=self.target_size,
+            target_countries=list(self.target_countries),
+            budget_band=self.budget_band,
+            buyer_roles=list(self.buyer_roles),
         )
 
 
@@ -67,6 +97,9 @@ class MatchParams(BaseModel):
 class MatchJobRequest(BaseModel):
     brief: BriefPayload
     params: MatchParams = Field(default_factory=MatchParams)
+    #: Which corpus to search. Defaults to "creator" so a client that predates the
+    #: two panels -- and every stored run -- keeps working untouched.
+    kind: CorpusKind = "creator"
 
 
 class MatchJobResponse(BaseModel):
@@ -76,6 +109,10 @@ class MatchJobResponse(BaseModel):
     progress: dict[str, Any] = Field(default_factory=dict)
     run_id: UUID | None = None
     outcome: Literal["match", "no_results"] | None = None
+    #: Echoed so a client polling a job knows which corpus the resulting run
+    #: belongs to without having to fetch it. Carried through job state, since a
+    #: job may still be queued when the panel is switched.
+    kind: CorpusKind = "creator"
     error: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -106,6 +143,9 @@ class CreatorSnapshot(BaseModel):
     verified: bool = False
     posts_per_week: int = 0
     account_age_years: int = 0
+    #: Why this record matched the brief's structured fields. Empty when the
+    #: brief asked for nothing structured, which is not a failure.
+    match_reasons: list[str] = Field(default_factory=list)
     content_style: str = ""
     audience_age: str = ""
     audience_gender: str = ""
@@ -123,6 +163,45 @@ class CreatorSnapshot(BaseModel):
     audience_top_countries: list[str] = Field(default_factory=list)
 
 
+class ProspectSnapshot(BaseModel):
+    """The stored shape of one company in a run.
+
+    The mirror of `CreatorSnapshot`, and separate from it on purpose: `handle`,
+    `platform`, `followers` and `engagement_pct` are required there and have no
+    company meaning, so a single model covering both would either make a company
+    carry a handle or make a creator's follower count optional. Two models means
+    each is honest about its own record, at the cost of Phase 6 having to choose
+    between them in the `RunDetail` response.
+
+    Field order mirrors `CreatorSnapshot`: what the company states, then what was
+    inferred about it, then similarity and the display-only ratios.
+    """
+
+    id: int
+    creator_key: str
+    name: str
+    industry: str
+    headcount: int
+    city: str
+    country: str = ""
+    description: str = ""
+    website: str = ""
+    founded_year: int = 0
+    funding_stage: str = ""
+    tags: list[str] = Field(default_factory=list)
+    similarity: float | None = None
+    match_reasons: list[str] = Field(default_factory=list)
+    seniority_mix: str = ""
+    department_mix: list[str] = Field(default_factory=list)
+    tech_stack: list[str] = Field(default_factory=list)
+    buying_signals: list[str] = Field(default_factory=list)
+    growth_trend: str = ""
+    # Display-only, per migration 009: not in corpus_text, so not citable.
+    growth_rate: float = 0.0
+    hiring_intensity: float = 0.0
+    top_markets: list[str] = Field(default_factory=list)
+
+
 class Grounding(BaseModel):
     """One claim a ranking reason rests on, and the profile field that backs it.
 
@@ -136,14 +215,29 @@ class Grounding(BaseModel):
     quote: str
 
 
-class RankedCreator(BaseModel):
+class RankedEntry(BaseModel):
+    """One ranked row, from either corpus.
+
+    Neutral rather than `RankedCreator` plus a near-identical prospect twin:
+    every field but `evidence` means the same thing for both, and two classes
+    free to drift is the failure mode this refactor exists to remove.
+
+    `evidence` is optional because it is not universal. It is per-field
+    verification against brief signals, and `MatchSignals` is the creator's
+    signal set. A company is matched on text similarity and has no signals to
+    check, so a prospect row omits the key rather than shipping an empty list
+    that reads as "checked, found nothing".
+
+    `creator_key` keeps its name for both corpora until the stored-JSONB
+    migration that renames it; changing it now would orphan every existing run.
+    """
     id: int
     creator_key: str
     rank: int
     fit: FitLevel
     source: RankingSource
     rationale: str = ""
-    evidence: list[str] = Field(default_factory=list)
+    evidence: list[str] | None = None
     grounding: list[Grounding] = Field(default_factory=list)
     # Why the model did not rank this entry, when `source` is a fallback. Kept
     # on the record rather than only in the log: a run re-read later needs to be
@@ -159,19 +253,48 @@ class Warning(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class SummaryCell(BaseModel):
+    """One summary number with its own label, so the client renders what arrives
+    rather than holding a second table of what each key is called."""
+
+    key: str
+    label: str
+    caption: str
+    value: str
+    #: None rather than False, so exclude_none can drop it. False is a real
+    #: value that exclude_none keeps, which would leave every non-primary cell
+    #: carrying "primary": false in the stored JSONB for no reader.
+    primary: bool | None = None
+    explanation: str | None = None
+
+
 class RunSummary(BaseModel):
+    """A run's summary, plus the cells that describe it.
+
+    `cells` is the display surface and is authoritative. The flat numeric keys
+    stay for stored-run compatibility and for anything computing over them, but
+    `avg_engagement_pct` and `median_followers` are optional because a company
+    has neither: `median_headcount` replaces one and nothing replaces the other.
+    """
+
+    kind: str = "creator"
+    cells: list[SummaryCell] = Field(default_factory=list)
     n_results: int
     avg_match_pct: float
     n_strong: int
     n_weak: int
-    avg_engagement_pct: float
-    median_followers: int
+    avg_engagement_pct: float | None = None
+    median_followers: int | None = None
+    median_headcount: int | None = None
 
 
 class RunListItem(BaseModel):
     run_id: UUID
     created_at: datetime
     brief: BriefPayload
+    #: Which corpus produced it. Defaults to "creator" because the summary of a
+    #: run stored before migration 010 has no kind to read.
+    kind: CorpusKind = "creator"
     n_results: int
     n_strong: int
     has_warnings: bool
@@ -189,8 +312,14 @@ class RunDetail(BaseModel):
     params: MatchParams
     warnings: list[Warning] = Field(default_factory=list)
     summary: RunSummary
-    candidates: list[CreatorSnapshot]
-    ranked: list[RankedCreator]
+    kind: CorpusKind = "creator"
+    #: A union, not a base type. The two snapshots share only `id`,
+    #: `creator_key` and `similarity` -- a company has no followers and a creator
+    #: has no headcount -- so a common base would be three fields wide and would
+    #: not stop a client reading `candidate.followers` off a company. The `kind`
+    #: above is what tells a client which arm it is holding.
+    candidates: list[CreatorSnapshot | ProspectSnapshot]
+    ranked: list[RankedEntry]
 
 
 class ComparisonRequest(BaseModel):
@@ -198,17 +327,25 @@ class ComparisonRequest(BaseModel):
     run_id_b: UUID
 
 
-class CreatorReference(BaseModel):
+class CandidateReference(BaseModel):
+    """A candidate that appears in both compared runs.
+
+    Renamed from `CreatorReference` and `handle` became `label` because a company
+    has no handle. `creator_key` keeps its name for both corpora until the stored
+    JSONB migration that renames it.
+    """
     id: int
     creator_key: str
-    handle: str
+    label: str
 
 
 class ComparisonResponse(BaseModel):
     run_ids: list[UUID]
     summary_a: RunSummary
     summary_b: RunSummary
-    shared_creators: list[CreatorReference]
+    #: Renamed from `shared_creators`: a company is not a creator, and the field
+    #: lists whatever both runs happened to surface.
+    shared: list[CandidateReference] = Field(default_factory=list)
 
 
 class MetaDefaults(BaseModel):

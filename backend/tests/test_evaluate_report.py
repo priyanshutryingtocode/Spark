@@ -151,11 +151,11 @@ def test_connection_is_not_held_across_the_ranking_call(monkeypatch):
         def __init__(self, cid, tags):
             self.id, self.tags = cid, tags
 
-    def fake_retrieve(brief, top_k, query_vec):
+    def fake_retrieve(brief, top_k, query_vec, corpus=None):
         events.append("retrieve")
         return [_Candidate(0, ["gym"]), _Candidate(1, ["food"])]
 
-    def fake_rank(brief, candidates, top_n, client):
+    def fake_rank(brief, candidates, top_n, client, corpus=None):
         events.append("rank")
         return [{"id": candidates[0].id}]
 
@@ -164,7 +164,7 @@ def test_connection_is_not_held_across_the_ranking_call(monkeypatch):
     monkeypatch.setattr(ev, "get_cached_query_vector", lambda text, cache=None: [0.0] * 768)
     monkeypatch.setattr(ev, "terms", lambda text: {"gym"})
     monkeypatch.setattr(ev, "overlap_ratio", lambda terms, c: 0.0)
-    monkeypatch.setattr(ev, "pool_for", lambda conn, tags, platform: 12)
+    monkeypatch.setattr(ev, "pool_for", lambda conn, tags, platform, table=None: 12)
 
     ev._run_case(
         object(),

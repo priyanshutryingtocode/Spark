@@ -1,3 +1,4 @@
+import { PANELS, useCorpus } from "../panels";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
@@ -8,6 +9,7 @@ import { ErrorNote, NOTE_TITLES } from "../components/SystemNote";
 import { PageIntro } from "../components/PageIntro";
 import { RangeControl } from "../components/RangeControl";
 import { ResultList } from "../components/ResultList";
+import { TargetFields } from "../components/TargetFields";
 import { RunContext } from "../components/RunContext";
 import { RunStatus } from "../components/RunStatus";
 import { SummaryMetrics } from "../components/RunSummary";
@@ -15,7 +17,7 @@ import { WarningBanner } from "../components/WarningBanner";
 import { useMatchJob } from "../hooks/useMatchJob";
 import { Skeleton } from "../components/Skeleton";
 import { useResource } from "../hooks/useResource";
-import type { Brief, Meta, RunDetail } from "../types";
+import type { Brief, CorpusKind, Meta, RunDetail } from "../types";
 
 const emptyBrief: Brief = {
   goal: "",
@@ -24,12 +26,24 @@ const emptyBrief: Brief = {
   vibe: "",
 };
 
-const goalSuggestions = [
-  "a thrifted-vintage clothing label for Gen Z who care about slow fashion",
-  "budget-friendly travel planning for solo backpackers",
-  "skincare routines for sensitive skin, taught inclusively",
-  "data-driven investing basics for first-time buyers",
-];
+/** Starter briefs per panel. Separate lists rather than one shared with the
+ *  noun swapped: a creator brief names an audience and a vibe, a sales brief
+ *  names a sector and a scale, and the examples only help if they are shaped
+ *  like the thing the field is asking for. */
+const goalSuggestions: Record<CorpusKind, string[]> = {
+  creator: [
+    "a thrifted-vintage clothing label for Gen Z who care about slow fashion",
+    "budget-friendly travel planning for solo backpackers",
+    "skincare routines for sensitive skin, taught inclusively",
+    "data-driven investing basics for first-time buyers",
+  ],
+  prospect: [
+    "warehouse robotics and fleet routing software for mid-size logistics firms",
+    "payroll automation for logistics companies with 200 to 2000 staff",
+    "compliance tooling for fintech companies expanding into new markets",
+    "field service scheduling software for industrial manufacturers",
+  ],
+};
 
 
 const FALLBACK_LIMITS: Meta["limits"] = {
@@ -49,6 +63,8 @@ function resolveLimits(meta: Meta | null): Meta["limits"] {
 }
 
 export function SearchPage() {
+  const kind = useCorpus();
+  const panel = PANELS[kind];
   const [brief, setBrief] = useState<Brief>(emptyBrief);
   const [topK, setTopK] = useState(10);
   const [topN, setTopN] = useState(5);
@@ -58,17 +74,28 @@ export function SearchPage() {
   const [hasStarted, setHasStarted] = useState(false);
 
   const meta = useResource<Meta>(
-    (signal) => api.getMeta({ signal }),
-    [],
+    (signal) => api.getMeta(kind, { signal }),
+    // Reloads on a panel switch: the two corpora have different index counts and
+    // different facets, and `kind` in the deps is what stops the Companies panel
+    // rendering the Creators panel's "2,000 creators indexed" pill.
+    [kind],
     {
       fallbackError: "Could not load API metadata.",
       onLoad: (value) => {
+        // Preserve what the user typed in every field. Meta reloads on a panel
+        // switch, and goal was preserved while audience and vibe were replaced,
+        // so toggling panels silently rewrote two thirds of a written brief.
         setBrief((current) => ({
-
           goal: current.goal || value.defaults?.goal || "",
-          platform: value.platforms.includes(current.platform) ? current.platform : value.platforms[0] ?? current.platform,
-          audience: value.defaults?.audience ?? "",
-          vibe: value.defaults?.vibe ?? "",
+          // No platform facet means the server sends an empty list; "Any" is
+          // then ignored rather than treated as a filter.
+          platform: value.platforms.length === 0
+            ? "Any"
+            : value.platforms.includes(current.platform)
+              ? current.platform
+              : value.platforms[0] || "Any",
+          audience: current.audience || value.defaults?.audience || "",
+          vibe: current.vibe || value.defaults?.vibe || "",
         }));
         setTopK(value.defaults?.top_k ?? 10);
         setTopN(value.defaults?.top_n ?? 5);
@@ -90,12 +117,17 @@ export function SearchPage() {
     setBrief((current) => ({ ...current, [field]: value }));
   }
 
+  /** The structured fields, which are lists and bands rather than strings. */
+  function updateTarget(field: string, value: unknown) {
+    setBrief((current) => ({ ...current, [field]: value }));
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setHasStarted(true);
     run.setData(null);
     run.setError(null);
-    await start(brief, { top_k: topK, top_n: topN });
+    await start(brief, { top_k: topK, top_n: topN }, kind);
   }
 
   const metaValue = meta.data;
@@ -103,9 +135,7 @@ export function SearchPage() {
   const needsReindex = metaValue?.index.status === "reindex_required";
   const disabled = metaValue ? metaValue.index.status !== "ready" : false;
   const limits = resolveLimits(metaValue);
-  // Read through a local rather than off the state object, so a brief missing
-  // a field cannot throw on a later render.
-  const goal = brief.goal ?? "";
+  const goal = brief.goal;
   const goalLength = goal.trim().length;
   const goalTooShort = goalLength > 0 && goalLength < limits.goal_min_length;
   const awaitingRun = job?.status === "succeeded"
@@ -118,7 +148,7 @@ export function SearchPage() {
       <PageIntro
         eyebrow="New match"
         title="Search"
-        description="Look up creators based on your requirements."
+        description={panel.describe}
         meta={metaValue && (
           <span className={`readiness ${disabled ? "readiness-off" : "readiness-on"}`}>
             <span className="readiness-dot" />
@@ -126,7 +156,7 @@ export function SearchPage() {
               ? "Index needs re-embedding"
               : disabled
                 ? "Index unavailable"
-                : `${metaValue.index.count.toLocaleString()} creators indexed`}
+                : `${metaValue.index.count.toLocaleString()} ${panel.plural} indexed`}
           </span>
         )}
       />
@@ -163,19 +193,24 @@ export function SearchPage() {
                 </label>
                 {!goal.trim() && (
                   <div className="suggestion-chips" role="group" aria-label="Example briefs">
-                    {goalSuggestions.map((suggestion) => (
+                    {goalSuggestions[kind].map((suggestion) => (
                       <button key={suggestion} className="chip" type="button" onClick={() => updateBrief("goal", suggestion)}>
                         {suggestion}
                       </button>
                     ))}
                   </div>
                 )}
-                <label className="brief-field" htmlFor="platform">
-                  <span>Platform</span>
-                  <select id="platform" value={brief.platform} onChange={(event) => updateBrief("platform", event.target.value)}>
-                    {metaValue.platforms.map((platform) => <option key={platform}>{platform}</option>)}
-                  </select>
-                </label>
+                {/* Hidden, not disabled: a company is not on TikTok and the server
+                  * does not filter prospects by platform, so an empty select
+                  * would offer a choice that silently does nothing. */}
+                {metaValue && metaValue.platforms.length > 0 && (
+                  <label className="brief-field" htmlFor="platform">
+                    <span>Platform</span>
+                    <select id="platform" value={brief.platform} onChange={(event) => updateBrief("platform", event.target.value)}>
+                      {metaValue.platforms.map((platform) => <option key={platform}>{platform}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="brief-field" htmlFor="audience">
                   <span>Target audience <em>optional</em></span>
                   <input id="audience" value={brief.audience} maxLength={limits.audience_max_length} placeholder="e.g. GenZ, first-time buyers" onChange={(event) => updateBrief("audience", event.target.value)} />
@@ -186,13 +221,25 @@ export function SearchPage() {
                 </label>
               </div>
               <div className="rail-divider" />
+              {/* The requirements, as opposed to the wording. The free text
+                  above still drives the embedding; these drive the filters and
+                  the rerank, so a brief can be precise about its audience or its
+                  ICP without having to say it in prose. */}
+              <div className="brief-section">
+                <div className="control-heading">
+                  <span>{kind === "creator" ? "Target audience" : "Target accounts"}</span>
+                  <span className="control-value">optional</span>
+                </div>
+                <TargetFields kind={kind} values={brief} onChange={updateTarget} />
+              </div>
+              <div className="rail-divider" />
               <div className="retrieval-controls">
                 <div className="control-heading"><span>Search depth</span><span className="control-value">{topK} → {topN}</span></div>
-                <RangeControl id="top-k" label="Candidates retrieved" value={topK} min={limits.top_k_min} max={limits.top_k_max} onChange={(next) => { setTopK(next); if (topN > next) setTopN(next); }} />
+                <RangeControl id="top-k" noun={panel.plural} label="Candidates retrieved" value={topK} min={limits.top_k_min} max={limits.top_k_max} onChange={(next) => { setTopK(next); if (topN > next) setTopN(next); }} />
                 {/* The shortlist cannot exceed what was retrieved, and the API
                   * also publishes its own ceiling. This used to read the
                   * backend's top_n_max nowhere. */}
-                <RangeControl id="top-n" label="Final shortlist" value={topN} min={limits.top_n_min} max={Math.min(topK, limits.top_n_max)} onChange={setTopN} />
+                <RangeControl id="top-n" noun={panel.plural} label="Final shortlist" value={topN} min={limits.top_n_min} max={Math.min(topK, limits.top_n_max)} onChange={setTopN} />
               </div>
               <div className="brief-footer">
                 <button className="btn btn-primary btn-block" type="submit" disabled={disabled || isRunning || goalTooShort}>
@@ -202,7 +249,7 @@ export function SearchPage() {
                   ? <span className="form-help">Add a little more detail so there is something to match against.</span>
                   : needsReindex
                     ? <span className="form-help">The index was built with a different embedding model. Re-embed it with the backend CLI.</span>
-                    : disabled && <span className="form-help">Index creators from the backend CLI first.</span>}
+                    : disabled && <span className="form-help">Index {panel.plural} from the backend CLI first.</span>}
               </div>
             </form>
           </aside>
@@ -230,9 +277,12 @@ export function SearchPage() {
             {!hasStarted && !job && !runDetail && <EmptyWorkspace />}
             {job?.outcome === "no_results" && (
               <EmptyState
+                icon="search"
                 index="NO MATCH"
                 title="Try a wider platform."
-                body="No creators came back for this filter. Switch to Any or adjust the brief."
+                body={kind === "creator"
+                  ? "No creators came back for this filter. Switch to Any or adjust the brief."
+                  : "No companies came back for this brief. Widen the description or adjust the depth."}
               />
             )}
             {awaitingRun && <Skeleton variant="results" label="Loading your shortlist" />}
@@ -253,7 +303,7 @@ export function SearchPage() {
                 />
                 <WarningBanner warnings={runDetail.warnings} />
                 <SummaryMetrics summary={runDetail.summary} />
-                <ResultList run={runDetail} />
+                <ResultList kind={kind} run={runDetail} />
               </div>
             )}
           </div>

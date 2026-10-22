@@ -39,7 +39,7 @@ describe("useRuns", () => {
 
   it("loads the first page on mount", async () => {
     apiMocks.listRuns.mockResolvedValue({ items: [makeItem("a")], next_cursor: null });
-    const { result } = renderHook(() => useRuns());
+    const { result } = renderHook(() => useRuns("creator"));
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.items).toHaveLength(1);
@@ -50,7 +50,7 @@ describe("useRuns", () => {
     apiMocks.listRuns
       .mockResolvedValueOnce({ items: [makeItem("a")], next_cursor: "page-2" })
       .mockResolvedValueOnce({ items: [makeItem("b")], next_cursor: null });
-    const { result } = renderHook(() => useRuns());
+    const { result } = renderHook(() => useRuns("creator"));
     await waitFor(() => expect(result.current.items).toHaveLength(1));
 
     expect(result.current.hasMore).toBe(true);
@@ -59,12 +59,13 @@ describe("useRuns", () => {
     expect(result.current.items.map((item) => item.run_id)).toEqual(["a", "b"]);
     expect(result.current.hasMore).toBe(false);
     // The cursor is passed through, not refetched from the top.
-    expect(apiMocks.listRuns).toHaveBeenLastCalledWith("page-2");
+    // kind first, then the cursor: listRuns(kind, cursor).
+    expect(apiMocks.listRuns).toHaveBeenLastCalledWith("creator", "page-2");
   });
 
   it("does nothing when loading more with no cursor", async () => {
     apiMocks.listRuns.mockResolvedValue({ items: [makeItem("a")], next_cursor: null });
-    const { result } = renderHook(() => useRuns());
+    const { result } = renderHook(() => useRuns("creator"));
     await waitFor(() => expect(result.current.hasMore).toBe(false));
 
     await act(async () => { await result.current.loadMore(); });
@@ -76,7 +77,7 @@ describe("useRuns", () => {
     apiMocks.listRuns
       .mockRejectedValueOnce(new ApiError("The backend did not respond within 30s.", 408, null))
       .mockResolvedValueOnce({ items: [makeItem("a")], next_cursor: null });
-    const { result } = renderHook(() => useRuns());
+    const { result } = renderHook(() => useRuns("creator"));
 
     await waitFor(() => expect(result.current.error).toMatch(/did not respond within 30s/));
 
@@ -89,7 +90,7 @@ describe("useRuns", () => {
   it("removes a deleted run from the list without refetching", async () => {
     apiMocks.listRuns.mockResolvedValue({ items: [makeItem("a"), makeItem("b")], next_cursor: null });
     apiMocks.deleteRun.mockResolvedValue(undefined);
-    const { result } = renderHook(() => useRuns());
+    const { result } = renderHook(() => useRuns("creator"));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
 
     await act(async () => { await result.current.remove("a"); });
@@ -105,7 +106,7 @@ describe("useRuns", () => {
     apiMocks.listRuns.mockResolvedValue({ items: [makeItem("a")], next_cursor: null });
     const { ApiError } = await import("../api/client");
     apiMocks.deleteRun.mockRejectedValue(new ApiError("Could not delete the run.", 409, null));
-    const { result } = renderHook(() => useRuns());
+    const { result } = renderHook(() => useRuns("creator"));
     await waitFor(() => expect(result.current.items).toHaveLength(1));
 
     await act(async () => {

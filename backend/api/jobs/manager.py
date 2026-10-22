@@ -9,9 +9,11 @@ from uuid import UUID, uuid4
 
 from api.schemas.models import MatchJobResponse, MatchParams
 from api.serialization import build_run_record
+from src.corpora import CREATORS, Corpus
 from src.gemini_client import get_client
-from src.match_service import rank_match, retrieve_candidates
+from src.match_service import rank_match, retrieve_for_run
 from src.models import Brief
+from src.retrieval import rerank_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +25,8 @@ class JobQueueFullError(RuntimeError):
 
 
 class JobManager:
-    """In-memory match queue. Jobs live only as long as this process, which is
-    the trade the free tier makes; completed runs are persisted separately."""
+    """In-memory queue: a restart loses an in-flight match, completed runs are
+    persisted separately. The trade the free tier makes."""
 
     def __init__(
         self,
@@ -43,12 +45,22 @@ class JobManager:
         self._jobs: dict[UUID, dict] = {}
         self._client = None
 
-    def submit(self, brief: Brief, params: MatchParams, owner_id: str | None = None) -> MatchJobResponse:
+    def submit(
+        self,
+        brief: Brief,
+        params: MatchParams,
+        owner_id: str | None = None,
+        corpus: Corpus = CREATORS,
+    ) -> MatchJobResponse:
         job_id = uuid4()
         now = _now()
         state = {
             "job_id": job_id,
             "owner_id": owner_id,
+            # Echoed on the job rather than inferred by the client from its own
+            # request: a poll that outlives a panel switch still has to say which
+            # corpus it is waiting on.
+            "kind": corpus.kind,
             "status": "queued",
             "stage": "queued",
             "progress": {},
@@ -64,10 +76,9 @@ class JobManager:
                 raise JobQueueFullError("The match queue is full.")
             self._jobs[job_id] = state
         try:
-            self._executor.submit(self._execute, job_id, brief, params, owner_id)
+            self._executor.submit(self._execute, job_id, brief, params, owner_id, corpus)
         except RuntimeError as exc:
-            # The executor was shut down between releasing the lock and
-            # submitting, e.g. during app shutdown.
+            # Executor shut down between releasing the lock and submitting.
             with self._lock:
                 self._jobs.pop(job_id, None)
             raise JobQueueFullError("The match service is shutting down.") from exc
@@ -92,10 +103,17 @@ class JobManager:
                     )
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def _execute(self, job_id: UUID, brief: Brief, params: MatchParams, owner_id: str | None) -> None:
+    def _execute(
+        self,
+        job_id: UUID,
+        brief: Brief,
+        params: MatchParams,
+        owner_id: str | None,
+        corpus: Corpus = CREATORS,
+    ) -> None:
         self._update(job_id, status="running", stage="embedding")
         try:
-            result = self._matcher(job_id, brief, params)
+            result = self._matcher(job_id, brief, params, corpus)
             if result is None:
                 self._update(
                     job_id,
@@ -106,7 +124,7 @@ class JobManager:
                 )
                 return
             self._update(job_id, stage="persisting")
-            record = build_run_record(result, uuid4())
+            record = build_run_record(result, uuid4(), corpus)
             record["owner_id"] = owner_id
             saved = self._repository.create(record)
             self._update(
@@ -125,21 +143,51 @@ class JobManager:
                 error="The match could not be completed. Check the API service and try again.",
             )
 
-    def _default_match(self, job_id: UUID, brief: Brief, params: MatchParams):
+    def _default_match(
+        self,
+        job_id: UUID,
+        brief: Brief,
+        params: MatchParams,
+        corpus: Corpus = CREATORS,
+    ):
         self._update(job_id, stage="retrieval")
-        candidates = retrieve_candidates(brief, top_k=params.top_k)
+        # One brief is embedded once for both corpora. `brief.query_text()` omits
+        # the platform on purpose, and for a company brief there is no platform
+        # facet to filter on anyway, so the same vector is valid for both.
+        #
+        # `retrieve_for_run`, not the strict retriever: it drops the filters one
+        # at a time until the corpus has something to say, and reports which it
+        # dropped. A brief whose filters match nothing then comes back with
+        # results and an explanation, rather than an empty page that reads as
+        # "nothing matched" -- which is a claim about the data, when the truth
+        # is about the brief.
+        candidates, relaxed = retrieve_for_run(brief, top_k=params.top_k, corpus=corpus)
         if not candidates:
             return None
+        candidates = rerank_candidates(brief, candidates, corpus=corpus)
         self._update(job_id, stage="ranking", progress={"retrieved_candidate_count": len(candidates)})
-        ranked = rank_match(brief, candidates, top_n=params.top_n, client=self._get_client())
+        ranked = rank_match(
+            brief,
+            candidates,
+            top_n=params.top_n,
+            client=self._get_client(),
+            corpus=corpus,
+            relaxed_filters=relaxed,
+        )
         return {
             "brief": brief,
             "params": {"top_k": params.top_k, "top_n": params.top_n},
             "candidates": candidates,
             "ranked": ranked,
+            # Read back by build_run_record, which turns it into the
+            # FILTER_RELAXED warning. Without this the relaxation happened
+            # silently and the reader was told a filter they never asked for.
+            "relaxed_filters": relaxed,
         }
 
     def _get_client(self):
+        # Double-checked: the factory builds a Gemini client, so it must run once
+        # even when several jobs start together.
         if self._client is None:
             with self._lock:
                 if self._client is None:
