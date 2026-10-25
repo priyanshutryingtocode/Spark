@@ -18,7 +18,7 @@ import { WarningBanner } from "../components/WarningBanner";
 import { useMatchJob } from "../hooks/useMatchJob";
 import { Skeleton } from "../components/Skeleton";
 import { useResource } from "../hooks/useResource";
-import type { Brief, CorpusKind, MatchRating, Meta, RunDetail, SavedMatchListResponse } from "../types";
+import type { Brief, CorpusKind, DatasetMode, MatchRating, Meta, RunDetail, SavedMatchListResponse } from "../types";
 
 const emptyBrief: Brief = {
   goal: "",
@@ -67,6 +67,7 @@ export function SearchPage() {
   const kind = useCorpus();
   const panel = PANELS[kind];
   const [brief, setBrief] = useState<Brief>(emptyBrief);
+  const [dataset, setDataset] = useState<DatasetMode | null>(null);
   const [topK, setTopK] = useState(10);
   const [topN, setTopN] = useState(5);
   const [exporting, setExporting] = useState(false);
@@ -77,18 +78,19 @@ export function SearchPage() {
   const [feedbackByMatch, setFeedbackByMatch] = useState<Record<string, MatchRating>>({});
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const { job, error, isRunning, start } = useMatchJob();
+  const { job, error, isRunning, start, cancel } = useMatchJob();
   const [hasStarted, setHasStarted] = useState(false);
 
   const meta = useResource<Meta>(
-    (signal) => api.getMeta(kind, { signal }),
+    (signal) => api.getMeta(kind, { signal }, dataset ?? undefined),
     // Reloads on a panel switch: the two corpora have different index counts and
     // different facets, and `kind` in the deps is what stops the Companies panel
     // rendering the Creators panel's "2,000 creators indexed" pill.
-    [kind],
+    [kind, dataset],
     {
       fallbackError: "Could not load API metadata.",
       onLoad: (value) => {
+        if (value.dataset) setDataset((current) => current ?? value.dataset!);
         // Preserve what the user typed in every field. Meta reloads on a panel
         // switch, and goal was preserved while audience and vibe were replaced,
         // so toggling panels silently rewrote two thirds of a written brief.
@@ -104,8 +106,6 @@ export function SearchPage() {
           audience: current.audience || value.defaults?.audience || "",
           vibe: current.vibe || value.defaults?.vibe || "",
         }));
-        setTopK(value.defaults?.top_k ?? 10);
-        setTopN(value.defaults?.top_n ?? 5);
       },
     },
   );
@@ -142,7 +142,19 @@ export function SearchPage() {
     setSaveError(null);
     run.setData(null);
     run.setError(null);
-    await start(brief, { top_k: topK, top_n: topN }, kind);
+    await start(brief, { top_k: topK, top_n: topN }, kind, dataset ?? meta.data?.dataset ?? "synthetic");
+  }
+
+  function switchDataset(next: DatasetMode) {
+    if (!dataset || next === dataset) return;
+    cancel();
+    setDataset(next);
+    setHasStarted(false);
+    run.setData(null);
+    run.setError(null);
+    setSelectedMatchId(null);
+    setSaveError(null);
+    setFeedbackError(null);
   }
 
   async function saveSelectedMatch() {
@@ -209,14 +221,20 @@ export function SearchPage() {
         title="Search"
         description={panel.describe}
         meta={metaValue && (
-          <span className={`readiness ${disabled ? "readiness-off" : "readiness-on"}`}>
-            <span className="readiness-dot" />
-            {needsReindex
-              ? "Index needs re-embedding"
-              : disabled
-                ? "Index unavailable"
-                : `${metaValue.index.count.toLocaleString()} ${panel.plural} indexed`}
-          </span>
+          <div className="search-meta-tools">
+            <div className="dataset-switch" role="group" aria-label="Search data source">
+              <button type="button" aria-pressed={dataset === "synthetic"} onClick={() => switchDataset("synthetic")}>Synthetic</button>
+              <button type="button" aria-pressed={dataset === "real"} onClick={() => switchDataset("real")}>Real</button>
+            </div>
+            <span className={`readiness ${disabled ? "readiness-off" : "readiness-on"}`}>
+              <span className="readiness-dot" />
+              {needsReindex
+                ? "Index needs re-embedding"
+                : disabled
+                  ? "Index unavailable"
+                  : `${metaValue.index.count.toLocaleString()} ${panel.plural} indexed`}
+            </span>
+          </div>
         )}
       />
 

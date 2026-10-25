@@ -199,6 +199,11 @@
 .page-intro-compact h1 { font-size: var(--text-xl); letter-spacing: -.02em; }
 .page-intro-compact .page-description { font-size: var(--text-sm); }
 .page-intro-meta { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; justify-content: flex-end; }
+.search-meta-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4); flex-wrap: wrap; }
+.dataset-switch { display: inline-flex; padding: 3px; border: 1px solid var(--rule-strong); background: var(--surface); }
+.dataset-switch button { border: 0; border-bottom: 2px solid transparent; padding: 7px 11px 5px; color: var(--muted-strong); background: transparent; font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.dataset-switch button[aria-pressed="true"] { border-bottom-color: var(--signal); color: var(--text); background: var(--surface-raised); }
+.dataset-switch button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .readiness { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted-strong); font-size: var(--text-xs); white-space: nowrap; }
 .readiness-dot, .system-note-signal, .fit-mark { display: inline-block; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--muted); }
 .readiness-on .readiness-dot, .system-note-info .system-note-signal, .fit-mark-strong { background: var(--signal); }

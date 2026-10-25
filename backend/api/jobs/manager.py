@@ -61,6 +61,7 @@ class JobManager:
             # request: a poll that outlives a panel switch still has to say which
             # corpus it is waiting on.
             "kind": corpus.kind,
+            "dataset": "real" if corpus.real_data else "synthetic",
             "status": "queued",
             "stage": "queued",
             "progress": {},

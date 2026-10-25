@@ -1,6 +1,7 @@
 export type FitLevel = "strong" | "partial" | "weak" | "unknown";
 export type RankingSource = "llm" | "llm_unverified" | "filled" | "fallback";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type DatasetMode = "synthetic" | "real";
 
 export interface Brief {
   goal: string;
@@ -33,6 +34,7 @@ export interface MatchJob {
   run_id: string | null;
   outcome: "match" | "no_results" | null;
   error: string | null;
+  dataset?: DatasetMode;
 }
 
 /** Which searchable corpus a screen, run or candidate belongs to. Mirrors the
@@ -155,6 +157,7 @@ export interface SummaryCell {
 export interface RunSummary {
   /** Which corpus produced this summary. */
   kind?: string;
+  dataset?: DatasetMode;
   /** Authoritative for display: each cell carries its own label and caption.
    *  Absent on summaries stored before cells existed, so the UI falls back to
    *  the flat keys below. */
@@ -176,6 +179,7 @@ export interface RunListItem {
   created_at: string;
   brief: Brief;
   kind: CorpusKind;
+  dataset?: DatasetMode;
   n_results: number;
   n_strong: number;
   has_warnings: boolean;
@@ -195,6 +199,7 @@ export interface RunDetail {
   /** Which corpus this run searched. Read this before touching `candidates` --
    *  they are a union, and `kind` is what says which arm is in hand. */
   kind: CorpusKind;
+  dataset?: DatasetMode;
   candidates: Array<CreatorSnapshot | ProspectSnapshot>;
   ranked: RankedEntry[];
 }
@@ -245,6 +250,7 @@ export interface Comparison {
 }
 
 export interface Meta {
+  dataset?: DatasetMode;
   platforms: string[];
   defaults: {
     goal: string;

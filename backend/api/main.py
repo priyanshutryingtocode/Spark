@@ -20,6 +20,7 @@ from api.schemas.models import (
     ComparisonRequest,
     CorpusKind,
     ComparisonResponse,
+    DatasetMode,
     MatchJobRequest,
     MatchJobResponse,
     MatchFeedbackRequest,
@@ -38,7 +39,7 @@ from api.serialization import run_detail, run_list_item, saved_match_response
 from api.services.compare_service import compare_runs
 from api.services.csv_export import build_csv
 from src import config, vector_store
-from src.corpora import DEFAULT_KIND, KINDS, get_corpus, kind_for_record
+from src.corpora import ALL_KINDS, DEFAULT_KIND, KINDS, dataset_for_record, get_corpus, kind_for_record
 from src.platforms import PLATFORMS
 from api.serialization import creator_to_snapshot, prospect_to_snapshot
 
@@ -52,7 +53,7 @@ def _unavailable(code: str, message: str) -> HTTPException:
     )
 
 
-def _require_ready(request: Request, kind: str = DEFAULT_KIND) -> None:
+def _require_ready(request: Request, kind: str = DEFAULT_KIND, dataset: str | None = None) -> None:
     """The single readiness gate, so the two callers cannot disagree.
 
     These were two ladders over the same three conditions in a different order,
@@ -76,7 +77,7 @@ def _require_ready(request: Request, kind: str = DEFAULT_KIND) -> None:
             f"The {noun} index was built with a different embedding model than "
             f"{config.EMBED_MODEL}. It must be re-embedded before matching works.",
         )
-    if _count_for(state, kind) <= 0:
+    if _count_for(state, kind, dataset) <= 0:
         raise _unavailable("NOT_READY", f"The {noun} index is not ready.")
 
 
@@ -225,9 +226,10 @@ def create_app(
         }
 
     @application.get("/api/v1/meta", response_model=MetaResponse)
-    def meta(request: Request, kind: CorpusKind = DEFAULT_KIND):
+    def meta(request: Request, kind: CorpusKind = DEFAULT_KIND, dataset: DatasetMode | None = None):
         _refresh_index_state(request)
-        corpus = get_corpus(kind)
+        selected_dataset = dataset or config.DATASET_MODE
+        corpus = get_corpus(kind, selected_dataset)
         return {
             # A corpus without this facet gets no options, since it cannot filter on them.
             "platforms": ["Any", *PLATFORMS] if corpus.facet_column == "platform" else [],
@@ -255,9 +257,9 @@ def create_app(
                 "status": (
                     "reindex_required"
                     if request.app.state.index_model_mismatch
-                    else "ready" if _count_for(request.app.state, kind) > 0 else "unavailable"
+                    else "ready" if _count_for(request.app.state, kind, selected_dataset) > 0 else "unavailable"
                 ),
-                "count": _count_for(request.app.state, kind),
+                "count": _count_for(request.app.state, kind, selected_dataset),
                 "embedding_model": config.EMBED_MODEL,
                 "embed_dimensions": config.EMBED_DIMENSIONS,
             },
@@ -265,6 +267,7 @@ def create_app(
                 "model": config.GEN_MODEL,
                 "fit_levels": ["strong", "partial", "weak", "unknown"],
             },
+            "dataset": selected_dataset,
         }
 
     @application.post(
@@ -273,11 +276,11 @@ def create_app(
         status_code=status.HTTP_202_ACCEPTED,
     )
     def create_match_job(payload: MatchJobRequest, request: Request):
-        corpus = get_corpus(payload.kind)
+        corpus = get_corpus(payload.kind, payload.dataset)
         _validate_brief(payload.brief.goal, payload.brief.platform, corpus)
         owner_id = current_user_id(request)
         _refresh_index_state(request)
-        _require_ready(request, corpus.kind)
+        _require_ready(request, corpus.kind, payload.dataset)
         manager = request.app.state.job_manager
         if manager is None:
             raise HTTPException(
@@ -388,7 +391,17 @@ def create_app(
                                f"One searched {kind_a} and the other {kind_b}.",
                 },
             )
-        return compare_runs(run_a, run_b, get_corpus(kind_a))
+        dataset_a = dataset_for_record(run_a)
+        dataset_b = dataset_for_record(run_b)
+        if dataset_a != dataset_b:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "CROSS_DATASET_COMPARE",
+                    "message": "Both runs must use the same data source.",
+                },
+            )
+        return compare_runs(run_a, run_b, get_corpus(kind_a, dataset_a))
 
     @application.get("/api/v1/saved-matches", response_model=SavedMatchListResponse)
     def list_saved_matches(request: Request, kind: CorpusKind | None = None):
@@ -501,24 +514,27 @@ def _count_all_corpora(conn) -> dict[str, int]:
     and letting the next refresh fill in the rest leaves the company panel showing
     an empty index for as long as the refresh cache holds.
     """
-    return {
-        corpus.kind: vector_store.count_records(conn, table=corpus.table)
-        for corpus in KINDS.values()
+    counts = {
+        f"{'real' if corpus.real_data else 'synthetic'}:{corpus.kind}":
+            vector_store.count_records(conn, table=corpus.table)
+        for corpus in ALL_KINDS
     }
+    counts.update({kind: counts[f"{config.DATASET_MODE}:{kind}"] for kind in KINDS})
+    return counts
 
 
 def _initialize_database(repository) -> dict[str, int]:
     repository.ensure_schema()
     with vector_store.get_connection() as conn:
         vector_store.init_schema(conn)
-        for corpus in KINDS.values():
+        for corpus in ALL_KINDS:
             vector_store.assert_index_matches_config(conn, table=corpus.table)
         return _count_all_corpora(conn)
 
 
 def _check_database() -> dict[str, int]:
     with vector_store.get_connection() as conn:
-        for corpus in KINDS.values():
+        for corpus in ALL_KINDS:
             vector_store.assert_index_matches_config(conn, table=corpus.table)
         return _count_all_corpora(conn)
 
@@ -549,7 +565,7 @@ def _refresh_index_state(request: Request) -> None:
             # Every corpus, not just the default table: migration 009 makes
             # prospects.embedding a literal VECTOR(768), and a deployment with a
             # different EMBED_DIMENSIONS must be caught on both.
-            for corpus in KINDS.values():
+            for corpus in ALL_KINDS:
                 vector_store.assert_index_matches_config(conn, table=corpus.table)
             counts = _count_all_corpora(conn)
         application.state.indexed_counts = counts
@@ -637,7 +653,7 @@ def _validate_brief(goal: str, platform: str, corpus=None) -> None:
 
 
 
-def _count_for(state, kind: str) -> int:
+def _count_for(state, kind: str, dataset: str | None = None) -> int:
     """How many records of `kind` are indexed.
 
     Reads the per-corpus map and falls back to zero for a corpus the app has no
@@ -646,7 +662,11 @@ def _count_for(state, kind: str) -> int:
     corpus pass the readiness gate.
     """
     counts = getattr(state, "indexed_counts", None) or {}
-    return counts.get(kind, 0)
+    selected = dataset or config.DATASET_MODE
+    key = f"{selected}:{kind}"
+    if key in counts:
+        return counts[key]
+    return counts.get(kind, 0) if selected == config.DATASET_MODE else 0
 
 
 def _not_found(code: str, message: str) -> HTTPException:

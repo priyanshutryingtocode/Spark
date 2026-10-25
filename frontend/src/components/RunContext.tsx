@@ -19,7 +19,7 @@ export function RunContext({ run, label, exporting = false, onExport }: RunConte
   return (
     <div className="run-context">
       <div>
-        <p className="eyebrow">{label} / {formatDate(createdAt)}</p>
+        <p className="eyebrow">{label} / {run.dataset === "real" ? "Real data" : "Synthetic data"} / {formatDate(createdAt)}</p>
         <h2 className="run-context-goal">{brief.goal}</h2>
         <p className="run-context-line">
           {brief.platform}

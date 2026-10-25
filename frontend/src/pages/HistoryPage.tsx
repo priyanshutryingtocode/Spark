@@ -112,6 +112,8 @@ export function HistoryPage() {
                   <span className="history-meta">
                     <span className="history-date">{formatDay(item.created_at)}</span>
                     <i />
+                    {item.dataset === "real" ? "Real data" : "Synthetic data"}
+                    <i />
                     {item.n_results} results
                     <i />
                     {item.n_strong} strong

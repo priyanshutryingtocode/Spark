@@ -17,6 +17,7 @@ JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 #: than imported from `src.corpora` so the wire contract is readable on its own;
 #: `src.corpora.KINDS` is asserted to cover it in tests.
 CorpusKind = Literal["creator", "prospect"]
+DatasetMode = Literal["synthetic", "real"]
 
 
 class BriefPayload(BaseModel):
@@ -100,6 +101,7 @@ class MatchJobRequest(BaseModel):
     #: Which corpus to search. Defaults to "creator" so a client that predates the
     #: two panels -- and every stored run -- keeps working untouched.
     kind: CorpusKind = "creator"
+    dataset: DatasetMode = config.DATASET_MODE
 
 
 class MatchJobResponse(BaseModel):
@@ -113,6 +115,7 @@ class MatchJobResponse(BaseModel):
     #: belongs to without having to fetch it. Carried through job state, since a
     #: job may still be queued when the panel is switched.
     kind: CorpusKind = "creator"
+    dataset: DatasetMode = config.DATASET_MODE
     error: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -278,6 +281,7 @@ class RunSummary(BaseModel):
     """
 
     kind: str = "creator"
+    dataset: DatasetMode = config.DATASET_MODE
     cells: list[SummaryCell] = Field(default_factory=list)
     n_results: int
     avg_match_pct: float
@@ -295,6 +299,7 @@ class RunListItem(BaseModel):
     #: Which corpus produced it. Defaults to "creator" because the summary of a
     #: run stored before migration 010 has no kind to read.
     kind: CorpusKind = "creator"
+    dataset: DatasetMode = config.DATASET_MODE
     n_results: int
     n_strong: int
     has_warnings: bool
@@ -313,6 +318,7 @@ class RunDetail(BaseModel):
     warnings: list[Warning] = Field(default_factory=list)
     summary: RunSummary
     kind: CorpusKind = "creator"
+    dataset: DatasetMode = config.DATASET_MODE
     #: A union, not a base type. The two snapshots share only `id`,
     #: `creator_key` and `similarity` -- a company has no followers and a creator
     #: has no headcount -- so a common base would be three fields wide and would
@@ -450,6 +456,7 @@ class MetaRanking(BaseModel):
 
 
 class MetaResponse(BaseModel):
+    dataset: DatasetMode = config.DATASET_MODE
     platforms: list[str]
     defaults: MetaDefaults
     limits: MetaLimits

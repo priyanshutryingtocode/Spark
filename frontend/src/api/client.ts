@@ -13,6 +13,7 @@ import type {
   SavedMatch,
   SavedMatchListResponse,
   CorpusKind,
+  DatasetMode,
 } from "../types";
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -162,12 +163,15 @@ async function downloadFile(path: string, filename: string) {
  *  is inferred is a caller that has a run in hand, which carries its own. */
 export const api = {
   probeBackend: () => probeBackend(),
-  getMeta: (kind: CorpusKind, options?: RequestOptions) =>
-    request<Meta>(`/api/v1/meta?kind=${kind}`, undefined, options),
-  createMatchJob: (brief: Brief, params: MatchParams, kind: CorpusKind, options?: RequestOptions) =>
+  getMeta: (kind: CorpusKind, options?: RequestOptions, dataset?: DatasetMode) => {
+    const query = new URLSearchParams({ kind });
+    if (dataset) query.set("dataset", dataset);
+    return request<Meta>(`/api/v1/meta?${query.toString()}`, undefined, options);
+  },
+  createMatchJob: (brief: Brief, params: MatchParams, kind: CorpusKind, options?: RequestOptions, dataset: DatasetMode = "synthetic") =>
     request<MatchJob>("/api/v1/match-jobs", {
       method: "POST",
-      body: JSON.stringify({ brief, params, kind }),
+      body: JSON.stringify({ brief, params, kind, dataset }),
     }, options),
   getMatchJob: (jobId: string, options?: RequestOptions) =>
     request<MatchJob>(`/api/v1/match-jobs/${jobId}`, undefined, options),

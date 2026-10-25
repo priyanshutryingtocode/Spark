@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from src.formatting import match_evidence
-from src.corpora import CREATORS, Corpus, Influencer, Prospect, get_corpus, kind_for_record
+from src.corpora import CREATORS, Corpus, Influencer, Prospect, dataset_for_record, get_corpus, kind_for_record
 from src.models import Brief
 from src.ranking import QUOTA_REASON_TAG
 from src.summaries import CREATOR_SUMMARY, SummarySpec, summary_spec
@@ -283,9 +283,13 @@ def build_run_record(result: dict, run_id: UUID, corpus: Corpus = CREATORS) -> d
         ]
         candidate_snapshots = [creator_to_snapshot(item) for item in candidates]
 
+    dataset = "real" if corpus.real_data else "synthetic"
+    summary = build_summary(candidate_snapshots, ranked, summary_spec(corpus.kind))
+    summary["dataset"] = dataset
     return {
         "id": run_id,
         "kind": corpus.kind,
+        "dataset": dataset,
         "brief": brief_to_payload(brief),
         "params": MatchParams(**params).model_dump(mode="json"),
         "result": {
@@ -297,14 +301,15 @@ def build_run_record(result: dict, run_id: UUID, corpus: Corpus = CREATORS) -> d
             result.get("relaxed_filters"),
             retrieved=len(candidate_snapshots),
         ),
-        "summary": build_summary(candidate_snapshots, ranked, summary_spec(corpus.kind)),
+        "summary": summary,
     }
 
 
 def run_detail(record: dict) -> RunDetail:
     result = _normalize_result(record["result"])
     kind = kind_for_record(record)
-    corpus = get_corpus(kind)
+    dataset = dataset_for_record(record)
+    corpus = get_corpus(kind, dataset)
     return RunDetail.model_validate(
         {
             "run_id": record["id"],
@@ -320,6 +325,7 @@ def run_detail(record: dict) -> RunDetail:
             # emit a company as a creator with most fields defaulted away. Naming
             # the kind here is what makes the union unambiguous.
             "kind": kind,
+            "dataset": dataset,
             "candidates": [_candidate_arm(candidate, kind) for candidate in result["candidates"]],
             "ranked": result["ranked"],
         }
@@ -410,6 +416,7 @@ def run_list_item(record: dict) -> RunListItem:
         created_at=record["created_at"],
         brief=record["brief"],
         kind=kind_for_record(record),
+        dataset=dataset_for_record(record),
         n_results=int(summary.get("n_results", 0)),
         n_strong=int(summary.get("n_strong", 0)),
         has_warnings=bool(record.get("warnings")),

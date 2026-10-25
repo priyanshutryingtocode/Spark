@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "../api/client";
-import type { Brief, CorpusKind, JobStatus, MatchJob, MatchParams } from "../types";
+import type { Brief, CorpusKind, DatasetMode, JobStatus, MatchJob, MatchParams } from "../types";
 
 const terminalStatuses: ReadonlySet<JobStatus> = new Set<JobStatus>(["succeeded", "failed", "cancelled"]);
 const pollIntervalMs = 1_200;
@@ -42,7 +42,7 @@ export function useMatchJob() {
     signal.addEventListener("abort", onAbort, { once: true });
   }), []);
 
-  const start = useCallback(async (brief: Brief, params: MatchParams, kind: CorpusKind) => {
+  const start = useCallback(async (brief: Brief, params: MatchParams, kind: CorpusKind, dataset: DatasetMode = "synthetic") => {
     const sequence = ++sequenceRef.current;
     const previous = runRef.current;
     previous?.controller.abort();
@@ -52,7 +52,7 @@ export function useMatchJob() {
     setJob(null);
     const startedAt = Date.now();
     try {
-      let current = await api.createMatchJob(brief, params, kind, { signal: controller.signal });
+      let current = await api.createMatchJob(brief, params, kind, { signal: controller.signal }, dataset);
       setJob(current);
       let pollErrors = 0;
       while (!terminalStatuses.has(current.status)) {
@@ -84,10 +84,19 @@ export function useMatchJob() {
     }
   }, [wait]);
 
+  const cancel = useCallback(() => {
+    sequenceRef.current += 1;
+    runRef.current?.controller.abort();
+    runRef.current = null;
+    setJob(null);
+    setError(null);
+  }, []);
+
   return {
     job,
     error,
     isRunning: job !== null && !terminalStatuses.has(job.status),
     start,
+    cancel,
   };
 }

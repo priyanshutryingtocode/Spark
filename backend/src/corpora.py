@@ -801,6 +801,7 @@ REAL_PROSPECTS = replace(
     signals_table="real_company_signals",
     signals_key="company_id",
     search_sql=PROSPECTS.search_sql
+        .replace("i.profile_url", "i.website AS profile_url")
         .replace("COALESCE(i.founded_year, 0)", "i.founded_year")
         .replace("COALESCE(s.growth_rate, 0)", "s.growth_rate")
         .replace("COALESCE(s.hiring_intensity, 0)", "s.hiring_intensity")
@@ -810,6 +811,8 @@ REAL_PROSPECTS = replace(
 
 SYNTHETIC_KINDS: dict[str, Corpus] = {c.kind: c for c in (CREATORS, PROSPECTS)}
 REAL_KINDS: dict[str, Corpus] = {c.kind: c for c in (REAL_CREATORS, REAL_PROSPECTS)}
+DATASET_MODES = {"synthetic": SYNTHETIC_KINDS, "real": REAL_KINDS}
+ALL_KINDS = tuple((*SYNTHETIC_KINDS.values(), *REAL_KINDS.values()))
 KINDS: dict[str, Corpus] = REAL_KINDS if config.DATASET_MODE == "real" else SYNTHETIC_KINDS
 
 #: What a request means when it does not say. Every run stored before the panels
@@ -823,13 +826,21 @@ def get_corpus(kind: str, dataset: str | None = None) -> Corpus:
     returned creators for a request that asked for prospects is the worse failure.
     """
     selected = dataset or config.DATASET_MODE
-    corpora = REAL_KINDS if selected == "real" else SYNTHETIC_KINDS if selected == "synthetic" else None
+    corpora = DATASET_MODES.get(selected)
     if corpora is None:
         raise ValueError(f"unknown dataset mode {selected!r}; expected 'synthetic' or 'real'")
     try:
         return corpora[kind]
     except KeyError:
         raise KeyError(f"unknown corpus kind {kind!r}; known: {sorted(corpora)}") from None
+
+
+def dataset_for_record(record: Mapping[str, Any]) -> str:
+    """Read the dataset persisted with a run, falling back for older runs."""
+    dataset = record.get("dataset") or (record.get("summary") or {}).get("dataset") or config.DATASET_MODE
+    if dataset not in DATASET_MODES:
+        raise KeyError(f"run has unknown dataset mode {dataset!r}; known: {sorted(DATASET_MODES)}")
+    return dataset
 
 
 def kind_for_record(record: Mapping[str, Any]) -> str:
@@ -844,4 +855,4 @@ def kind_for_record(record: Mapping[str, Any]) -> str:
 
 
 def corpus_for_record(record: Mapping[str, Any]) -> Corpus:
-    return get_corpus(kind_for_record(record))
+    return get_corpus(kind_for_record(record), dataset_for_record(record))
