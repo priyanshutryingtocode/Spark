@@ -42,8 +42,8 @@ _CREATOR_ONLY = {
     "audience_age": lambda c, e, r: c.get("audience_age", ""),
     "audience_gender": lambda c, e, r: c.get("audience_gender", ""),
     "audience_country": lambda c, e, r: c.get("audience_country", ""),
-    "reach_ratio": lambda c, e, r: f"{c.get('reach_ratio', 0):.3f}",
-    "sponsored_ratio": lambda c, e, r: f"{c.get('sponsored_ratio', 0):.3f}",
+    "reach_ratio": lambda c, e, r: f"{c['reach_ratio']:.3f}" if c.get("reach_ratio") is not None else "",
+    "sponsored_ratio": lambda c, e, r: f"{c['sponsored_ratio']:.3f}" if c.get("sponsored_ratio") is not None else "",
     "growth_trend": lambda c, e, r: c.get("growth_trend", ""),
     "audience_top_countries": lambda c, e, r: "|".join(c.get("audience_top_countries", [])),
     "evidence": lambda c, e, r: "; ".join(e.get("evidence", [])),
@@ -73,8 +73,8 @@ _PROSPECT_ONLY = {
     # which `_safe_cell` then prefixes with an apostrophe as spreadsheet formula
     # injection, shipping a shrinking company's growth rate into the sheet as the
     # text `'-0.064`. A real float also lets the sheet sum and sort the column.
-    "growth_rate": lambda c, e, r: float(c.get("growth_rate") or 0),
-    "hiring_intensity": lambda c, e, r: float(c.get("hiring_intensity") or 0),
+    "growth_rate": lambda c, e, r: float(c["growth_rate"]) if c.get("growth_rate") is not None else "",
+    "hiring_intensity": lambda c, e, r: float(c["hiring_intensity"]) if c.get("hiring_intensity") is not None else "",
     "top_markets": lambda c, e, r: "|".join(c.get("top_markets", [])),
     "website": lambda c, e, r: c.get("website", ""),
     "description": lambda c, e, r: c.get("description", ""),

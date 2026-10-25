@@ -61,7 +61,7 @@ function LookalikeRow({ kind, candidate }: { kind: CorpusKind; candidate: Creato
     ? [creator.handle, creator.platform, creator.city].filter(Boolean).join(" · ")
     : [company!.industry, company!.city, company!.country].filter(Boolean).join(" · ");
   const details = creator
-    ? `${formatCount(creator.followers)} followers · ${creator.engagement_pct.toFixed(1)}% engagement`
+    ? `${formatCount(creator.followers)} followers · ${creator.engagement_pct === null ? "—" : `${creator.engagement_pct.toFixed(1)}%`} engagement`
     : `${formatCount(company!.headcount)} employees · ${company!.funding_stage || "Company"}`;
 
   return (

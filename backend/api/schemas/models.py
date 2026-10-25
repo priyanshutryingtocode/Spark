@@ -135,14 +135,14 @@ class CreatorSnapshot(BaseModel):
     city: str
     country: str = ""
     language: str = ""
-    followers: int
-    engagement_pct: float
-    average_views: int = 0
-    average_likes: int = 0
-    average_comments: int = 0
-    verified: bool = False
-    posts_per_week: int = 0
-    account_age_years: int = 0
+    followers: int | None = None
+    engagement_pct: float | None = None
+    average_views: int | None = None
+    average_likes: int | None = None
+    average_comments: int | None = None
+    verified: bool | None = None
+    posts_per_week: float | None = None
+    account_age_years: float | None = None
     #: Why this record matched the brief's structured fields. Empty when the
     #: brief asked for nothing structured, which is not a failure.
     match_reasons: list[str] = Field(default_factory=list)
@@ -157,8 +157,8 @@ class CreatorSnapshot(BaseModel):
     # Stored and displayable, but deliberately not citable: these are not in
     # corpus_text, so retrieval never searched on them and a reason must not
     # claim them.
-    reach_ratio: float = 0.0
-    sponsored_ratio: float = 0.0
+    reach_ratio: float | None = None
+    sponsored_ratio: float | None = None
     growth_trend: str = ""
     audience_top_countries: list[str] = Field(default_factory=list)
 
@@ -181,12 +181,12 @@ class ProspectSnapshot(BaseModel):
     creator_key: str
     name: str
     industry: str
-    headcount: int
+    headcount: int | None = None
     city: str
     country: str = ""
     description: str = ""
     website: str = ""
-    founded_year: int = 0
+    founded_year: int | None = None
     funding_stage: str = ""
     tags: list[str] = Field(default_factory=list)
     similarity: float | None = None
@@ -197,8 +197,8 @@ class ProspectSnapshot(BaseModel):
     buying_signals: list[str] = Field(default_factory=list)
     growth_trend: str = ""
     # Display-only, per migration 009: not in corpus_text, so not citable.
-    growth_rate: float = 0.0
-    hiring_intensity: float = 0.0
+    growth_rate: float | None = None
+    hiring_intensity: float | None = None
     top_markets: list[str] = Field(default_factory=list)
 
 

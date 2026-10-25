@@ -12,6 +12,9 @@ load_dotenv(ROOT_DIR / ".env")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+DATASET_MODE = os.environ.get("DATASET_MODE", "synthetic").strip().lower()
+if DATASET_MODE not in {"synthetic", "real"}:
+    raise RuntimeError("DATASET_MODE must be synthetic or real")
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 if APP_ENV not in {"development", "test", "demo", "production"}:
     raise RuntimeError("APP_ENV must be development, test, demo, or production")

@@ -172,8 +172,8 @@ function creatorFacts(creator: CreatorSnapshot): Array<[string, string]> {
   const facts: Array<[string, string]> = [
     ["Platform", creator.platform],
     ["Followers", formatCount(creator.followers)],
-    ["Engagement", `${creator.engagement_pct.toFixed(1)}%`],
-    ["Reach rate", `${Math.round(creator.reach_ratio * 100)}%`],
+    ["Engagement", creator.engagement_pct === null ? "—" : `${creator.engagement_pct.toFixed(1)}%`],
+    ["Reach rate", creator.reach_ratio === null ? "—" : `${Math.round(creator.reach_ratio * 100)}%`],
   ];
   if (creator.city) facts.push(["Location", creator.city]);
   if (creator.content_style) facts.push(["Content style", creator.content_style]);

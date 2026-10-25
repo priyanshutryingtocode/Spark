@@ -217,11 +217,11 @@ export function ProportionBar({
   label, value, description,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   /** Spoken after the percentage, e.g. "of followers" -- what the bar means. */
   description: string;
 }) {
-  if (!(value > 0)) return null;
+  if (value === null || !(value > 0)) return null;
   const shown = Math.min(value, 1);
   return (
     <div className="result-metric result-metric-wide">
@@ -237,7 +237,8 @@ export function ProportionBar({
 }
 
 /** Compact a count: 940, 24K, 1.2M. */
-export function formatCount(value: number): string {
+export function formatCount(value: number | null): string {
+  if (value === null) return "—";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
   return String(value);

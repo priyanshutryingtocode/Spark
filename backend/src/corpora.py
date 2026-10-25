@@ -14,7 +14,7 @@ reason, and `src.slotting` holds the primitives both sides need.
 """
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
@@ -154,8 +154,8 @@ class CreatorSignals:
     brand_collaborations: list[str] = field(default_factory=list)
     # views / followers. The honest measure of whether reach is real: a
     # follower count can be large while actual reach stays small.
-    reach_ratio: float = 0.0
-    sponsored_ratio: float = 0.0
+    reach_ratio: float | None = 0.0
+    sponsored_ratio: float | None = 0.0
     growth_trend: str = ""
     audience_top_countries: list[str] = field(default_factory=list)
     source_provider: str = "synthetic"
@@ -173,8 +173,8 @@ class Influencer:
     handle: str
     platform: str
     city: str
-    followers: int
-    engagement: float
+    followers: int | None
+    engagement: float | None
     tags: list = field(default_factory=list)
     bio: str = ""
     embedding: np.ndarray = None
@@ -182,19 +182,19 @@ class Influencer:
     name: str = ""
     country: str = ""
     language: str = ""
-    average_views: int = 0
-    average_likes: int = 0
-    average_comments: int = 0
-    verified: bool = False
-    posts_per_week: int = 0
-    account_age_years: int = 0
+    average_views: int | None = 0
+    average_likes: int | None = 0
+    average_comments: int | None = 0
+    verified: bool | None = False
+    posts_per_week: float | None = 0
+    account_age_years: float | None = 0
     content_style: str = ""
     audience_age: str = ""
     audience_gender: str = ""
     audience_country: str = ""
     brand_collaborations: list[str] = field(default_factory=list)
-    reach_ratio: float = 0.0
-    sponsored_ratio: float = 0.0
+    reach_ratio: float | None = 0.0
+    sponsored_ratio: float | None = 0.0
     growth_trend: str = ""
     audience_top_countries: list[str] = field(default_factory=list)
     audience_age_distribution: dict[str, float] = field(default_factory=dict)
@@ -323,8 +323,8 @@ class ProspectSignals:
     growth_trend: str = ""
     # Annual headcount growth. Derived from the row rather than copied, so a
     # reader cannot catch the row contradicting its own headcount.
-    growth_rate: float = 0.0
-    hiring_intensity: float = 0.0
+    growth_rate: float | None = 0.0
+    hiring_intensity: float | None = 0.0
     top_markets: list[str] = field(default_factory=list)
     source_provider: str = "synthetic"
     observed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -336,13 +336,13 @@ class Prospect:
     id: int
     name: str
     industry: str
-    headcount: int
+    headcount: int | None
     city: str
     country: str
     description: str
     tags: list = field(default_factory=list)
     website: str = ""
-    founded_year: int = 0
+    founded_year: int | None = 0
     funding_stage: str = ""
     embedding: np.ndarray = None
     similarity: float | None = None
@@ -351,8 +351,8 @@ class Prospect:
     tech_stack: list[str] = field(default_factory=list)
     buying_signals: list[str] = field(default_factory=list)
     growth_trend: str = ""
-    growth_rate: float = 0.0
-    hiring_intensity: float = 0.0
+    growth_rate: float | None = 0.0
+    hiring_intensity: float | None = 0.0
     top_markets: list[str] = field(default_factory=list)
     profile_url: str = ""
     source_records: list[CompanySourceRecord] = field(default_factory=list)
@@ -488,6 +488,7 @@ class Corpus:
     #: another corpus's rules. Doubles as the "can be reranked" flag, which is
     #: why it is a field and not a separate boolean.
     rubric: Rubric | None = None
+    real_data: bool = False
 
 
 def content_hash(text: str) -> str:
@@ -582,44 +583,47 @@ def _prospect_signal_row(signals: ProspectSignals) -> dict[str, Any]:
 
 def _creator_row(row: Mapping[str, Any]) -> Influencer:
     return Influencer(
-        id=row["id"], handle=row["handle"], platform=row["platform"], city=row["city"],
-        followers=row["followers"], engagement=float(row["engagement"]),
-        tags=list(row["tags"]), bio=row["bio"],
+        id=row["id"], handle=row["handle"], platform=row["platform"], city=row["city"] or "",
+        followers=row["followers"],
+        engagement=float(row["engagement"]) if row["engagement"] is not None else None,
+        tags=list(row["tags"] or []), bio=row["bio"] or "",
         similarity=float(row["similarity"]),
-        name=row["name"], country=row["country"], language=row["language"],
+        name=row["name"] or "", country=row["country"] or "", language=row["language"] or "",
         average_views=row["average_views"], average_likes=row["average_likes"],
         average_comments=row["average_comments"], verified=row["verified"],
         posts_per_week=row["posts_per_week"], account_age_years=row["account_age_years"],
         identity_id=row["identity_id"], profile_url=row["profile_url"] or "",
         identity_key=row.get("identity_key") or "",
         identity_name=row.get("identity_name") or "",
-        content_style=row["content_style"], audience_age=row["audience_age"],
-        audience_gender=row["audience_gender"], audience_country=row["audience_country"],
-        brand_collaborations=list(row["brand_collaborations"]),
-        reach_ratio=float(row["reach_ratio"]), sponsored_ratio=float(row["sponsored_ratio"]),
-        growth_trend=row["growth_trend"],
-        audience_top_countries=list(row["audience_top_countries"]),
+        content_style=row["content_style"] or "", audience_age=row["audience_age"] or "",
+        audience_gender=row["audience_gender"] or "", audience_country=row["audience_country"] or "",
+        brand_collaborations=list(row["brand_collaborations"] or []),
+        reach_ratio=float(row["reach_ratio"]) if row["reach_ratio"] is not None else None,
+        sponsored_ratio=float(row["sponsored_ratio"]) if row["sponsored_ratio"] is not None else None,
+        growth_trend=row["growth_trend"] or "",
+        audience_top_countries=list(row["audience_top_countries"] or []),
     )
 
 
 def _prospect_row(row: Mapping[str, Any]) -> Prospect:
     return Prospect(
-        id=row["id"], name=row["name"], industry=row["industry"],
-        headcount=row["headcount"], city=row["city"], country=row["country"],
-        description=row["description"], tags=list(row["tags"]),
+        id=row["id"], name=row["name"], industry=row["industry"] or "",
+        headcount=row["headcount"], city=row["city"] or "", country=row["country"] or "",
+        description=row["description"] or "", tags=list(row["tags"] or []),
         website=row["website"], founded_year=row["founded_year"],
         profile_url=row.get("profile_url") or "",
         source_provider=row.get("source_provider") or "synthetic",
         observed_at=row.get("observed_at"), confidence=row.get("confidence"),
         funding_stage=row["funding_stage"],
         similarity=float(row["similarity"]),
-        seniority_mix=row["seniority_mix"],
-        department_mix=list(row["department_mix"]),
-        tech_stack=list(row["tech_stack"]),
-        buying_signals=list(row["buying_signals"]),
-        growth_trend=row["growth_trend"], growth_rate=float(row["growth_rate"]),
-        hiring_intensity=float(row["hiring_intensity"]),
-        top_markets=list(row["top_markets"]),
+        seniority_mix=row["seniority_mix"] or "",
+        department_mix=list(row["department_mix"] or []),
+        tech_stack=list(row["tech_stack"] or []),
+        buying_signals=list(row["buying_signals"] or []),
+        growth_trend=row["growth_trend"] or "",
+        growth_rate=float(row["growth_rate"]) if row["growth_rate"] is not None else None,
+        hiring_intensity=float(row["hiring_intensity"]) if row["hiring_intensity"] is not None else None,
+        top_markets=list(row["top_markets"] or []),
     )
 
 
@@ -772,7 +776,41 @@ PROSPECTS = Corpus(
     """,
 )
 
-KINDS: dict[str, Corpus] = {c.kind: c for c in (CREATORS, PROSPECTS)}
+REAL_CREATORS = replace(
+    CREATORS,
+    table="real_creator_accounts",
+    signals_table="real_creator_signals",
+    search_sql=(
+        CREATORS.search_sql
+        .replace("LEFT JOIN creator_identities AS ci", "LEFT JOIN real_creator_identities AS ci")
+        .replace("COALESCE(i.average_views, 0)", "i.average_views")
+        .replace("COALESCE(i.average_likes, 0)", "i.average_likes")
+        .replace("COALESCE(i.average_comments, 0)", "i.average_comments")
+        .replace("COALESCE(i.verified, FALSE)", "i.verified")
+        .replace("COALESCE(i.posts_per_week, 0)", "i.posts_per_week")
+        .replace("COALESCE(i.account_age_years, 0)", "i.account_age_years")
+        .replace("COALESCE(s.reach_ratio, 0)", "s.reach_ratio")
+        .replace("COALESCE(s.sponsored_ratio, 0)", "s.sponsored_ratio")
+    ),
+    real_data=True,
+)
+
+REAL_PROSPECTS = replace(
+    PROSPECTS,
+    table="real_companies",
+    signals_table="real_company_signals",
+    signals_key="company_id",
+    search_sql=PROSPECTS.search_sql
+        .replace("COALESCE(i.founded_year, 0)", "i.founded_year")
+        .replace("COALESCE(s.growth_rate, 0)", "s.growth_rate")
+        .replace("COALESCE(s.hiring_intensity, 0)", "s.hiring_intensity")
+        .replace("COALESCE(s.source_provider, 'synthetic')", "COALESCE(s.source_provider, 'public_source')"),
+    real_data=True,
+)
+
+SYNTHETIC_KINDS: dict[str, Corpus] = {c.kind: c for c in (CREATORS, PROSPECTS)}
+REAL_KINDS: dict[str, Corpus] = {c.kind: c for c in (REAL_CREATORS, REAL_PROSPECTS)}
+KINDS: dict[str, Corpus] = REAL_KINDS if config.DATASET_MODE == "real" else SYNTHETIC_KINDS
 
 #: What a request means when it does not say. Every run stored before the panels
 #: existed is a creator run, so this is also the migration 010 column default.
@@ -780,14 +818,18 @@ DEFAULT_KIND = "creator"
 assert DEFAULT_KIND in KINDS, "the default corpus must exist"
 
 
-def get_corpus(kind: str) -> Corpus:
+def get_corpus(kind: str, dataset: str | None = None) -> Corpus:
     """The corpus for `kind`. Raises rather than defaulting: a typo that silently
     returned creators for a request that asked for prospects is the worse failure.
     """
+    selected = dataset or config.DATASET_MODE
+    corpora = REAL_KINDS if selected == "real" else SYNTHETIC_KINDS if selected == "synthetic" else None
+    if corpora is None:
+        raise ValueError(f"unknown dataset mode {selected!r}; expected 'synthetic' or 'real'")
     try:
-        return KINDS[kind]
+        return corpora[kind]
     except KeyError:
-        raise KeyError(f"unknown corpus kind {kind!r}; known: {sorted(KINDS)}") from None
+        raise KeyError(f"unknown corpus kind {kind!r}; known: {sorted(corpora)}") from None
 
 
 def kind_for_record(record: Mapping[str, Any]) -> str:

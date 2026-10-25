@@ -240,6 +240,8 @@ def _insert_sql(table: str, columns: tuple[str, ...], key: str | tuple[str, ...]
 
 
 def upsert_records(conn: psycopg.Connection, records: list, corpus: Corpus) -> None:
+    if corpus.real_data:
+        raise ValueError("Real-data records must be written through RealDataRepository")
     _validate_identifier(corpus.table)
     _validate_identifier(corpus.signals_table)
 
@@ -439,6 +441,8 @@ def replace_records(conn: psycopg.Connection, records: list, corpus: Corpus) -> 
     TRUNCATE CASCADE removes each corpus's signals and source history through
     foreign keys (migrations 007, 009, 011, 012).
     """
+    if corpus.real_data:
+        raise ValueError("The synthetic corpus replacement path cannot modify real-data tables")
     _validate_identifier(corpus.table)
     with conn.transaction():
         # CASCADE so the signals rows go with their records; without it the

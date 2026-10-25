@@ -92,7 +92,7 @@ export function CreatorResultCard({
       />
       <div className="result-metrics">
         <Metric label="Followers" value={formatCount(creator.followers)} />
-        <Metric label="Engagement" value={`${creator.engagement_pct.toFixed(1)}%`} />
+        <Metric label="Engagement" value={creator.engagement_pct === null ? "—" : `${creator.engagement_pct.toFixed(1)}%`} />
         {/* Reach as a share of followers separates real reach from a large
          *  follower count, which is the number a brand is most often misled by.
          *  It was buried under "Profile details" -- the one check the row
@@ -148,7 +148,7 @@ function detailPairs(creator: CreatorSnapshot): string[] {
   if (creator.language) pairs.push(`Language: ${creator.language}`);
   if (creator.audience_age) pairs.push(`Audience: ${creator.audience_age}`);
   if (creator.audience_gender) pairs.push(`Gender: ${creator.audience_gender}`);
-  if (creator.sponsored_ratio >= 0) {
+  if (creator.sponsored_ratio !== null) {
     pairs.push(`Sponsored: ${Math.round(creator.sponsored_ratio * 100)}%`);
   }
   if (creator.growth_trend) pairs.push(`Growth: ${creator.growth_trend}`);

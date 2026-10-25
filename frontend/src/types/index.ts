@@ -57,17 +57,22 @@ export interface CreatorSnapshot {
   platform: string;
   city: string;
   language: string;
-  followers: number;
-  engagement_pct: number;
-  verified: boolean;
+  followers: number | null;
+  engagement_pct: number | null;
+  average_views?: number | null;
+  average_likes?: number | null;
+  average_comments?: number | null;
+  verified: boolean | null;
+  posts_per_week?: number | null;
+  account_age_years?: number | null;
   content_style: string;
   audience_age: string;
   audience_gender: string;
   brand_collaborations: string[];
   tags: string[];
   similarity: number | null;
-  reach_ratio: number;
-  sponsored_ratio: number;
+  reach_ratio: number | null;
+  sponsored_ratio: number | null;
   growth_trend: string;
   audience_top_countries: string[];
 }
@@ -86,12 +91,12 @@ export interface ProspectSnapshot {
   creator_key: string;
   name: string;
   industry: string;
-  headcount: number;
+  headcount: number | null;
   city: string;
   country: string;
   description: string;
   website: string;
-  founded_year: number;
+  founded_year: number | null;
   funding_stage: string;
   tags: string[];
   similarity: number | null;
@@ -101,8 +106,8 @@ export interface ProspectSnapshot {
   tech_stack: string[];
   buying_signals: string[];
   growth_trend: string;
-  growth_rate: number;
-  hiring_intensity: number;
+  growth_rate: number | null;
+  hiring_intensity: number | null;
   top_markets: string[];
 }
 

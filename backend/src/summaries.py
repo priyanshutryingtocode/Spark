@@ -58,22 +58,19 @@ def _n_weak(pairs: list[tuple[dict, dict]]) -> int:
 
 # --- the values that genuinely differ ----------------------------------------
 
-def _avg_engagement_pct(pairs: list[tuple[dict, dict]]) -> float:
-    if not pairs:
-        return 0.0
-    return sum(float(record.get("engagement_pct") or 0.0) for _, record in pairs) / len(pairs)
+def _avg_engagement_pct(pairs: list[tuple[dict, dict]]) -> float | None:
+    values = [float(record["engagement_pct"]) for _, record in pairs if record.get("engagement_pct") is not None]
+    return sum(values) / len(values) if values else None
 
 
-def _median_followers(pairs: list[tuple[dict, dict]]) -> int:
-    if not pairs:
-        return 0
-    return int(round(median(int(record.get("followers") or 0) for _, record in pairs)))
+def _median_followers(pairs: list[tuple[dict, dict]]) -> int | None:
+    values = [int(record["followers"]) for _, record in pairs if record.get("followers") is not None]
+    return int(round(median(values))) if values else None
 
 
-def _median_headcount(pairs: list[tuple[dict, dict]]) -> int:
-    if not pairs:
-        return 0
-    return int(round(median(int(record.get("headcount") or 0) for _, record in pairs)))
+def _median_headcount(pairs: list[tuple[dict, dict]]) -> int | None:
+    values = [int(record["headcount"]) for _, record in pairs if record.get("headcount") is not None]
+    return int(round(median(values))) if values else None
 
 
 # --- formatting --------------------------------------------------------------
@@ -186,11 +183,11 @@ CREATOR_SUMMARY = SummarySpec(
         _SIMILARITY,
         SummaryCell(
             key="avg_engagement_pct", label="Avg engagement", caption="reach quality",
-            display=lambda v: pct(v.get("avg_engagement_pct", 0.0)),
+            display=lambda v: pct(v["avg_engagement_pct"]) if v.get("avg_engagement_pct") is not None else "—",
         ),
         SummaryCell(
             key="median_followers", label="Median reach", caption="followers",
-            display=lambda v: compact_count(v.get("median_followers", 0)),
+            display=lambda v: compact_count(v["median_followers"]) if v.get("median_followers") is not None else "—",
         ),
         _REVIEW,
     ),
@@ -208,7 +205,7 @@ PROSPECT_SUMMARY = SummarySpec(
         _SIMILARITY,
         SummaryCell(
             key="median_headcount", label="Median headcount", caption="employees",
-            display=lambda v: compact_count(v.get("median_headcount", 0)),
+            display=lambda v: compact_count(v["median_headcount"]) if v.get("median_headcount") is not None else "—",
         ),
         _REVIEW,
     ),

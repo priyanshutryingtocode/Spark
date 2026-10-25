@@ -128,6 +128,7 @@ export function CompanyResultCard({
 /** Signed on purpose: a shrinking company is a real answer, and flattening it to
  *  "0%" would hide the signal that makes it a poor lead. */
 function growthLabel(company: ProspectSnapshot): string {
+  if (company.growth_rate === null) return "";
   const percent = company.growth_rate * 100;
   if (percent === 0) return "";
   return `Growth: ${percent > 0 ? "+" : ""}${percent.toFixed(1)}%`;

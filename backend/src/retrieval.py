@@ -248,8 +248,11 @@ def _match_score(brief: Brief, candidate: Any, corpus: Corpus) -> tuple[float, l
         wanted = getattr(brief, spec.brief_field, None)
         if not _is_requested(wanted):
             continue
+        value = getattr(candidate, spec.column, None)
+        if corpus.real_data and value is None:
+            continue
         requested += spec.weight
-        score = spec.scorer(getattr(candidate, spec.column, None), wanted)
+        score = spec.scorer(value, wanted)
         if score <= 0:
             continue
         total += score * spec.weight
