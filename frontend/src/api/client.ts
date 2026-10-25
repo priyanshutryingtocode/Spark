@@ -3,6 +3,9 @@ import type {
   Brief,
   Comparison,
   MatchJob,
+  MatchFeedback,
+  MatchRating,
+  LookalikeResponse,
   MatchParams,
   Meta,
   RunDetail,
@@ -186,6 +189,26 @@ export const api = {
     }, options),
   deleteSavedMatch: (savedId: string, options?: RequestOptions) =>
     request<void>(`/api/v1/saved-matches/${savedId}`, { method: "DELETE" }, options),
+  updateSavedMatch: (savedId: string, update: Partial<Pick<SavedMatch, "status" | "note">>, options?: RequestOptions) =>
+    request<SavedMatch>(`/api/v1/saved-matches/${savedId}`, {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    }, options),
+  submitMatchFeedback: (
+    runId: string,
+    candidateId: number,
+    rating: MatchRating,
+    reason = "",
+    options?: RequestOptions,
+  ) => request<MatchFeedback>("/api/v1/match-feedback", {
+    method: "POST",
+    body: JSON.stringify({ run_id: runId, candidate_id: candidateId, rating, reason }),
+  }, options),
+  findLookalikes: (kind: CorpusKind, candidateId: number, options?: RequestOptions) =>
+    request<LookalikeResponse>("/api/v1/lookalikes", {
+      method: "POST",
+      body: JSON.stringify({ kind, candidate_id: candidateId, top_k: 5 }),
+    }, options),
   compareRuns: (runIdA: string, runIdB: string, options?: RequestOptions) =>
     request<Comparison>("/api/v1/comparisons", {
       method: "POST",

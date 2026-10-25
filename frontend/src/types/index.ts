@@ -201,8 +201,29 @@ export interface SavedMatch {
   brief: Brief;
   candidate: CreatorSnapshot | ProspectSnapshot;
   ranked: RankedEntry;
+  status: SavedMatchStatus;
+  note: string;
   source_created_at: string;
   created_at: string;
+  updated_at: string;
+}
+
+export type SavedMatchStatus = "to_review" | "contacted" | "in_conversation" | "partnered" | "passed";
+export type MatchRating = "positive" | "negative";
+
+export interface MatchFeedback {
+  run_id: string;
+  candidate_id: number;
+  kind: CorpusKind;
+  rating: MatchRating;
+  reason: string;
+  updated_at: string;
+}
+
+export interface LookalikeResponse {
+  kind: CorpusKind;
+  source_id: number;
+  candidates: Array<CreatorSnapshot | ProspectSnapshot>;
 }
 
 export interface SavedMatchListResponse {

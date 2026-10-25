@@ -18,7 +18,7 @@ import { WarningBanner } from "../components/WarningBanner";
 import { useMatchJob } from "../hooks/useMatchJob";
 import { Skeleton } from "../components/Skeleton";
 import { useResource } from "../hooks/useResource";
-import type { Brief, CorpusKind, Meta, RunDetail, SavedMatchListResponse } from "../types";
+import type { Brief, CorpusKind, MatchRating, Meta, RunDetail, SavedMatchListResponse } from "../types";
 
 const emptyBrief: Brief = {
   goal: "",
@@ -74,6 +74,9 @@ export function SearchPage() {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [savingMatch, setSavingMatch] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [feedbackByMatch, setFeedbackByMatch] = useState<Record<string, MatchRating>>({});
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const { job, error, isRunning, start } = useMatchJob();
   const [hasStarted, setHasStarted] = useState(false);
 
@@ -155,6 +158,23 @@ export function SearchPage() {
       setSaveError(caught instanceof ApiError ? caught.message : "Could not save this match.");
     } finally {
       setSavingMatch(false);
+    }
+  }
+
+  async function submitMatchFeedback(rating: MatchRating) {
+    if (!runDetail || !selectedCandidate || feedbackSaving) return;
+    const runId = runDetail.run_id;
+    const candidateId = selectedCandidate.id;
+    const key = `${runId}:${candidateId}`;
+    setFeedbackSaving(true);
+    setFeedbackError(null);
+    try {
+      const feedback = await api.submitMatchFeedback(runId, candidateId, rating);
+      setFeedbackByMatch((current) => ({ ...current, [key]: feedback.rating }));
+    } catch (caught) {
+      setFeedbackError(caught instanceof ApiError ? caught.message : "Could not record your feedback.");
+    } finally {
+      setFeedbackSaving(false);
     }
   }
 
@@ -359,6 +379,7 @@ export function SearchPage() {
                   onSelect={(id) => {
                     setSelectedMatchId(id);
                     setSaveError(null);
+                    setFeedbackError(null);
                   }}
                 />
                 {selectedEntry && selectedCandidate && (
@@ -372,6 +393,10 @@ export function SearchPage() {
                     saving={savingMatch}
                     saveError={saveError}
                     onSave={() => void saveSelectedMatch()}
+                    feedbackRating={feedbackByMatch[`${runDetail.run_id}:${selectedEntry.id}`] ?? null}
+                    feedbackSaving={feedbackSaving}
+                    feedbackError={feedbackError}
+                    onFeedback={(rating) => void submitMatchFeedback(rating)}
                     onClose={() => setSelectedMatchId(null)}
                   />
                 )}

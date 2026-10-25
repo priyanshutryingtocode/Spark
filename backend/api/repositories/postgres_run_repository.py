@@ -203,8 +203,8 @@ class PostgresRunRepository:
             )
             row = conn.execute(
                 """
-                SELECT id, run_id, kind, brief, candidate, ranked,
-                       source_created_at, created_at
+                SELECT id, run_id, kind, brief, candidate, ranked, status, note,
+                       source_created_at, created_at, updated_at
                 FROM saved_matches
                 WHERE owner_id IS NOT DISTINCT FROM %s
                   AND run_id = %s AND candidate_id = %s
@@ -223,8 +223,8 @@ class PostgresRunRepository:
         with self._connection_factory() as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, run_id, kind, brief, candidate, ranked,
-                       source_created_at, created_at
+                SELECT id, run_id, kind, brief, candidate, ranked, status, note,
+                       source_created_at, created_at, updated_at
                 FROM saved_matches
                 WHERE {' AND '.join(where)}
                 ORDER BY created_at DESC, id DESC
@@ -232,6 +232,57 @@ class PostgresRunRepository:
                 params,
             ).fetchall()
         return [_saved_match_from_row(row) for row in rows]
+
+    def update_saved_match(self, saved_id, owner_id=None, *, status=None, note=None) -> dict | None:
+        owner = _as_uuid(owner_id)
+        with self._connection_factory() as conn:
+            row = conn.execute(
+                """
+                UPDATE saved_matches
+                SET status = COALESCE(%s, status),
+                    note = COALESCE(%s, note),
+                    updated_at = NOW()
+                WHERE id = %s AND owner_id IS NOT DISTINCT FROM %s
+                RETURNING id, run_id, kind, brief, candidate, ranked, status, note,
+                          source_created_at, created_at, updated_at
+                """,
+                (status, note, _as_uuid(saved_id), owner),
+            ).fetchone()
+        return _saved_match_from_row(row) if row else None
+
+    def save_match_feedback(
+        self, run_id, candidate_id: int, kind: str, rating: str, reason: str = "", owner_id=None
+    ) -> dict | None:
+        owner = _as_uuid(owner_id)
+        feedback_id = uuid4()
+        with self._connection_factory() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO match_feedback
+                    (id, owner_id, run_id, candidate_id, kind, rating, reason)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (
+                    (COALESCE(owner_id, '00000000-0000-0000-0000-000000000000'::UUID)),
+                    run_id, candidate_id
+                ) DO UPDATE SET
+                    kind = EXCLUDED.kind,
+                    rating = EXCLUDED.rating,
+                    reason = EXCLUDED.reason,
+                    updated_at = NOW()
+                RETURNING run_id, candidate_id, kind, rating, reason, updated_at
+                """,
+                (feedback_id, owner, _as_uuid(run_id), candidate_id, kind, rating, reason),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "run_id": row[0],
+            "candidate_id": row[1],
+            "kind": row[2],
+            "rating": row[3],
+            "reason": row[4],
+            "updated_at": row[5],
+        }
 
     def delete_saved_match(self, saved_id: UUID, owner_id=None) -> bool:
         owner = _as_uuid(owner_id)
@@ -273,8 +324,11 @@ def _saved_match_from_row(row) -> dict:
         "brief": row[3],
         "candidate": row[4],
         "ranked": row[5],
-        "source_created_at": row[6],
-        "created_at": row[7],
+        "status": row[6],
+        "note": row[7],
+        "source_created_at": row[8],
+        "created_at": row[9],
+        "updated_at": row[10],
     }
 
 

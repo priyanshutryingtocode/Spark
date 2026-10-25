@@ -12,7 +12,15 @@ import { Skeleton } from "../components/Skeleton";
 import { useResource } from "../hooks/useResource";
 import { PANELS, panelPath, useCorpus } from "../panels";
 import { formatDay } from "../format";
-import type { CorpusKind, CreatorSnapshot, ProspectSnapshot, SavedMatchListResponse } from "../types";
+import type { CorpusKind, CreatorSnapshot, ProspectSnapshot, SavedMatch, SavedMatchListResponse, SavedMatchStatus } from "../types";
+
+const statusLabels: Record<SavedMatchStatus, string> = {
+  to_review: "To review",
+  contacted: "Contacted",
+  in_conversation: "In conversation",
+  partnered: "Partnered",
+  passed: "Passed",
+};
 
 export function SavedMatchesPage() {
   const kind = useCorpus();
@@ -21,6 +29,9 @@ export function SavedMatchesPage() {
   const [loadedKind, setLoadedKind] = useState<CorpusKind | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [updatingSavedId, setUpdatingSavedId] = useState<string | null>(null);
   const saved = useResource<SavedMatchListResponse>(
     (signal) => api.listSavedMatches(kind, { signal }),
     [kind],
@@ -46,6 +57,23 @@ export function SavedMatchesPage() {
       setDeleteError(caught instanceof ApiError ? caught.message : "Could not remove the saved match.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function updateSavedMatch(item: SavedMatch, update: { status?: SavedMatchStatus; note?: string }) {
+    if (updatingSavedId) return;
+    setUpdatingSavedId(item.saved_id);
+    setWorkflowError(null);
+    try {
+      const updated = await api.updateSavedMatch(item.saved_id, update);
+      saved.setData({
+        items: (saved.data?.items ?? []).map((current) => current.saved_id === updated.saved_id ? updated : current),
+      });
+      setNoteDrafts((current) => ({ ...current, [updated.saved_id]: updated.note }));
+    } catch (caught) {
+      setWorkflowError(caught instanceof ApiError ? caught.message : "Could not update this saved match.");
+    } finally {
+      setUpdatingSavedId(null);
     }
   }
 
@@ -105,6 +133,7 @@ export function SavedMatchesPage() {
                     <span className="saved-match-copy">
                       <strong>{name}</strong>
                       <span>{item.brief.goal}</span>
+                      <small>{statusLabels[item.status]}</small>
                       <small>Rank #{String(item.ranked.rank).padStart(2, "0")} · Saved {formatDay(item.created_at)}</small>
                     </span>
                   </button>
@@ -123,11 +152,50 @@ export function SavedMatchesPage() {
             })}
           </section>
           {selected && (
-            <MatchDetailsPanel
-              kind={selected.kind}
-              candidate={selected.candidate}
-              entry={selected.ranked}
-            />
+            <div className="saved-detail-column">
+              <MatchDetailsPanel
+                kind={selected.kind}
+                candidate={selected.candidate}
+                entry={selected.ranked}
+              />
+              <section className="saved-workflow" aria-labelledby="saved-workflow-title">
+                <div className="saved-workflow-heading">
+                  <h2 id="saved-workflow-title">Shortlist progress</h2>
+                  <span>{statusLabels[selected.status]}</span>
+                </div>
+                <label className="brief-field" htmlFor="saved-match-status">
+                  <span>Status</span>
+                  <select
+                    id="saved-match-status"
+                    value={selected.status}
+                    disabled={updatingSavedId === selected.saved_id}
+                    onChange={(event) => void updateSavedMatch(selected, { status: event.target.value as SavedMatchStatus })}
+                  >
+                    {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <label className="brief-field" htmlFor="saved-match-note">
+                  <span>Notes</span>
+                  <textarea
+                    id="saved-match-note"
+                    rows={3}
+                    maxLength={2000}
+                    value={noteDrafts[selected.saved_id] ?? selected.note}
+                    placeholder="Add context for your next step."
+                    onChange={(event) => setNoteDrafts((current) => ({ ...current, [selected.saved_id]: event.target.value }))}
+                  />
+                </label>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={updatingSavedId === selected.saved_id || (noteDrafts[selected.saved_id] ?? selected.note) === selected.note}
+                  onClick={() => void updateSavedMatch(selected, { note: noteDrafts[selected.saved_id] ?? selected.note })}
+                >
+                  {updatingSavedId === selected.saved_id ? "Saving..." : "Save note"}
+                </button>
+                {workflowError && <p className="saved-workflow-error" role="alert">{workflowError}</p>}
+              </section>
+            </div>
           )}
         </div>
       )}

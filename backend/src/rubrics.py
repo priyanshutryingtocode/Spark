@@ -251,6 +251,9 @@ as "grounding" entries naming the field and quoting it verbatim. Rules:
   than listing every field that happens to match.
 - A "strong" fit must have at least one grounding entry. If you cannot cite
   anything, rate it "partial" or "weak" instead of asserting a match.
+- For creators, "strong" also requires a cited topic, bio, or content style
+  that directly supports the campaign goal. A name or audience statistic alone
+  is not content evidence; do not infer a niche from a person's name.
 - Never cite a field for something it does not say. A creator's audience age
   is not evidence about their content, and a brand partnership is not evidence
   of a topic.

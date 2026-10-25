@@ -457,6 +457,7 @@ def search(
     facet: str | None,
     top_k: int,
     filters: dict[str, Any] | None = None,
+    exclude_ids: list[int] | None = None,
 ) -> list:
     """Retrieve the `top_k` rows of `corpus` nearest `query_embedding`.
 
@@ -543,6 +544,9 @@ def search(
         else:
             clauses.append(f"{column_ref} = %s")
             params.append(value)
+    if exclude_ids:
+        clauses.append("i.id <> ALL(%s)")
+        params.append(exclude_ids)
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY (i.embedding <=> %s) LIMIT %s"
@@ -555,3 +559,32 @@ def search(
     with conn.cursor(row_factory=dict_row) as cur:
         rows = cur.execute(sql, params).fetchall()
     return [corpus.row_builder(row) for row in rows]
+
+
+def search_similar_to_record(
+    conn: psycopg.Connection,
+    candidate_id: int,
+    corpus: Corpus,
+    top_k: int = 5,
+) -> list | None:
+    """Retrieve indexed profiles nearest to a stored profile vector."""
+    _validate_identifier(corpus.table)
+    with conn.cursor() as cur:
+        source = cur.execute(
+            f"SELECT embedding, {corpus.facet_column or 'NULL'} FROM {corpus.table} WHERE id = %s",
+            (candidate_id,),
+        ).fetchone()
+    if source is None:
+        return None
+    query_embedding, facet = source
+    if hasattr(query_embedding, "to_numpy"):
+        query_embedding = query_embedding.to_numpy()
+    query_embedding = np.asarray(query_embedding, dtype=np.float32)
+    return search(
+        conn,
+        query_embedding=query_embedding,
+        corpus=corpus,
+        facet=facet if corpus.facet_is_hard_filter else None,
+        top_k=top_k,
+        exclude_ids=[candidate_id],
+    )

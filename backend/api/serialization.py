@@ -334,8 +334,11 @@ def saved_match_response(record: dict) -> dict:
         brief=record["brief"],
         candidate=record["candidate"],
         ranked=record["ranked"],
+        status=record["status"],
+        note=record["note"],
         source_created_at=record["source_created_at"],
         created_at=record["created_at"],
+        updated_at=record["updated_at"],
     ).model_dump(mode="json")
 
 

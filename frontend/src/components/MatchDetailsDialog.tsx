@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { CreatorSnapshot, CorpusKind, ProspectSnapshot, RankedEntry } from "../types";
+import type { CreatorSnapshot, CorpusKind, MatchRating, ProspectSnapshot, RankedEntry } from "../types";
 import { MatchDetailsPanel } from "./MatchDetailsPanel";
 
 export function MatchDetailsDialog({
@@ -10,6 +10,10 @@ export function MatchDetailsDialog({
   saving,
   saveError,
   onSave,
+  feedbackRating,
+  feedbackSaving,
+  feedbackError,
+  onFeedback,
   onClose,
 }: {
   kind: CorpusKind;
@@ -19,6 +23,10 @@ export function MatchDetailsDialog({
   saving: boolean;
   saveError: string | null;
   onSave: () => void;
+  feedbackRating: MatchRating | null;
+  feedbackSaving: boolean;
+  feedbackError: string | null;
+  onFeedback: (rating: MatchRating) => void;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -68,6 +76,10 @@ export function MatchDetailsDialog({
         saving={saving}
         saveError={saveError}
         onSave={onSave}
+        feedbackRating={feedbackRating}
+        feedbackSaving={feedbackSaving}
+        feedbackError={feedbackError}
+        onFeedback={onFeedback}
       />
     </dialog>
   );

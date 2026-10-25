@@ -1,5 +1,6 @@
-import type { CreatorSnapshot, CorpusKind, ProspectSnapshot, RankedEntry } from "../types";
+import type { CreatorSnapshot, CorpusKind, MatchRating, ProspectSnapshot, RankedEntry } from "../types";
 import { CandidateAvatar, GroundingList, formatCount } from "./resultShared";
+import { MoreLikeThis } from "./MoreLikeThis";
 
 const fitLabel = {
   strong: "Strong fit",
@@ -23,6 +24,10 @@ export function MatchDetailsPanel({
   saving = false,
   saveError,
   onSave,
+  feedbackRating,
+  feedbackSaving = false,
+  feedbackError,
+  onFeedback,
   titleId = "match-details-title",
 }: {
   kind: CorpusKind;
@@ -32,6 +37,10 @@ export function MatchDetailsPanel({
   saving?: boolean;
   saveError?: string | null;
   onSave?: () => void;
+  feedbackRating?: MatchRating | null;
+  feedbackSaving?: boolean;
+  feedbackError?: string | null;
+  onFeedback?: (rating: MatchRating) => void;
   titleId?: string;
 }) {
   const title = kind === "creator"
@@ -74,6 +83,34 @@ export function MatchDetailsPanel({
         </div>
       )}
 
+      {onFeedback && (
+        <section className="match-feedback" aria-label="Match feedback">
+          <span>Was this a useful match?</span>
+          <div className="match-feedback-actions">
+            <button
+              className="btn btn-secondary"
+              type="button"
+              aria-pressed={feedbackRating === "positive"}
+              disabled={feedbackSaving}
+              onClick={() => onFeedback("positive")}
+            >
+              Good fit
+            </button>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              aria-pressed={feedbackRating === "negative"}
+              disabled={feedbackSaving}
+              onClick={() => onFeedback("negative")}
+            >
+              Poor fit
+            </button>
+          </div>
+          {feedbackRating && <small role="status">Thanks, your feedback is recorded.</small>}
+          {feedbackError && <small role="alert">{feedbackError}</small>}
+        </section>
+      )}
+
       {entry.rationale && (
         <section className="match-details-section">
           <h3>Why it matched</h3>
@@ -109,6 +146,8 @@ export function MatchDetailsPanel({
         </dl>
         <p className="match-details-caption">Similarity compares profile text with your brief; it is not a fit score.</p>
       </section>
+
+      <MoreLikeThis key={`${kind}:${candidate.id}`} kind={kind} candidateId={candidate.id} />
 
       {entry.grounding.length > 0 && (
         <section className="match-details-section">

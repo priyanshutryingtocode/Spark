@@ -334,12 +334,54 @@ class SavedMatchResponse(BaseModel):
     brief: BriefPayload
     candidate: dict[str, Any]
     ranked: dict[str, Any]
+    status: Literal["to_review", "contacted", "in_conversation", "partnered", "passed"] = "to_review"
+    note: str = ""
     source_created_at: datetime
     created_at: datetime
+    updated_at: datetime
 
 
 class SavedMatchListResponse(BaseModel):
     items: list[SavedMatchResponse]
+
+
+class SavedMatchUpdateRequest(BaseModel):
+    status: Literal["to_review", "contacted", "in_conversation", "partnered", "passed"] | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def require_update(self):
+        if not ({"status", "note"} & self.model_fields_set):
+            raise ValueError("Provide a status or note to update.")
+        return self
+
+
+class MatchFeedbackRequest(BaseModel):
+    run_id: UUID
+    candidate_id: int = Field(ge=0)
+    rating: Literal["positive", "negative"]
+    reason: str = Field(default="", max_length=1000)
+
+
+class MatchFeedbackResponse(BaseModel):
+    run_id: UUID
+    candidate_id: int
+    kind: CorpusKind
+    rating: Literal["positive", "negative"]
+    reason: str
+    updated_at: datetime
+
+
+class LookalikeRequest(BaseModel):
+    kind: CorpusKind
+    candidate_id: int = Field(ge=0)
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+class LookalikeResponse(BaseModel):
+    kind: CorpusKind
+    source_id: int
+    candidates: list[dict[str, Any]]
 
 
 class ComparisonRequest(BaseModel):

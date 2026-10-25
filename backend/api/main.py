@@ -22,12 +22,17 @@ from api.schemas.models import (
     ComparisonResponse,
     MatchJobRequest,
     MatchJobResponse,
+    MatchFeedbackRequest,
+    MatchFeedbackResponse,
+    LookalikeRequest,
+    LookalikeResponse,
     MetaResponse,
     RunDetail,
     RunListResponse,
     SaveMatchRequest,
     SavedMatchListResponse,
     SavedMatchResponse,
+    SavedMatchUpdateRequest,
 )
 from api.serialization import run_detail, run_list_item, saved_match_response
 from api.services.compare_service import compare_runs
@@ -35,6 +40,7 @@ from api.services.csv_export import build_csv
 from src import config, vector_store
 from src.corpora import DEFAULT_KIND, KINDS, get_corpus, kind_for_record
 from src.platforms import PLATFORMS
+from api.serialization import creator_to_snapshot, prospect_to_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +409,60 @@ def create_app(
         if record is None:
             raise _not_found("RUN_MATCH_NOT_FOUND", "Match not found in your run.")
         return saved_match_response(record)
+
+    @application.patch("/api/v1/saved-matches/{saved_id}", response_model=SavedMatchResponse)
+    def update_saved_match(saved_id: UUID, payload: SavedMatchUpdateRequest, request: Request):
+        owner_id = current_user_id(request)
+        record = _repository(request).update_saved_match(
+            saved_id,
+            owner_id=owner_id,
+            status=payload.status,
+            note=payload.note,
+        )
+        if record is None:
+            raise _not_found("SAVED_MATCH_NOT_FOUND", "Saved match not found.")
+        return saved_match_response(record)
+
+    @application.post("/api/v1/match-feedback", response_model=MatchFeedbackResponse)
+    def submit_match_feedback(payload: MatchFeedbackRequest, request: Request):
+        owner_id = current_user_id(request)
+        repository = _repository(request)
+        run = repository.get(payload.run_id, owner_id=owner_id)
+        if run is None:
+            raise _not_found("RUN_NOT_FOUND", "Run not found.")
+        candidates = (run.get("result") or {}).get("candidates", [])
+        if not any(candidate.get("id") == payload.candidate_id for candidate in candidates):
+            raise _not_found("RUN_MATCH_NOT_FOUND", "Match not found in your run.")
+        feedback = repository.save_match_feedback(
+            payload.run_id,
+            payload.candidate_id,
+            run["kind"],
+            payload.rating,
+            payload.reason,
+            owner_id=owner_id,
+        )
+        return feedback
+
+    @application.post("/api/v1/lookalikes", response_model=LookalikeResponse)
+    def find_lookalikes(payload: LookalikeRequest, request: Request):
+        current_user_id(request)
+        corpus = get_corpus(payload.kind)
+        _require_ready(request, corpus.kind)
+        with vector_store.get_connection() as conn:
+            candidates = vector_store.search_similar_to_record(
+                conn,
+                candidate_id=payload.candidate_id,
+                corpus=corpus,
+                top_k=payload.top_k,
+            )
+        if candidates is None:
+            raise _not_found("PROFILE_NOT_FOUND", "Profile not found in the selected index.")
+        serialize = creator_to_snapshot if corpus.kind == "creator" else prospect_to_snapshot
+        return {
+            "kind": corpus.kind,
+            "source_id": payload.candidate_id,
+            "candidates": [serialize(candidate) for candidate in candidates],
+        }
 
     @application.delete("/api/v1/saved-matches/{saved_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_saved_match(saved_id: UUID, request: Request):
