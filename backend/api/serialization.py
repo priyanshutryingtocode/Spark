@@ -18,6 +18,7 @@ from .schemas.models import (
     RunDetail,
     RunListItem,
     RunSummary,
+    SavedMatchResponse,
     Warning,
 )
 
@@ -323,6 +324,19 @@ def run_detail(record: dict) -> RunDetail:
             "ranked": result["ranked"],
         }
     )
+
+
+def saved_match_response(record: dict) -> dict:
+    return SavedMatchResponse(
+        saved_id=record["id"],
+        run_id=record["run_id"],
+        kind=record["kind"],
+        brief=record["brief"],
+        candidate=record["candidate"],
+        ranked=record["ranked"],
+        source_created_at=record["source_created_at"],
+        created_at=record["created_at"],
+    ).model_dump(mode="json")
 
 
 def summarize_record(record: dict, corpus: Corpus = CREATORS) -> dict:

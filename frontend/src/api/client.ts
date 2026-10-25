@@ -7,6 +7,8 @@ import type {
   Meta,
   RunDetail,
   RunListResponse,
+  SavedMatch,
+  SavedMatchListResponse,
   CorpusKind,
 } from "../types";
 
@@ -175,6 +177,15 @@ export const api = {
     request<RunDetail>(`/api/v1/runs/${runId}`, undefined, { timeoutMs: slowRequestTimeoutMs, ...options }),
   deleteRun: (runId: string, options?: RequestOptions) =>
     request<void>(`/api/v1/runs/${runId}`, { method: "DELETE" }, options),
+  listSavedMatches: (kind: CorpusKind, options?: RequestOptions) =>
+    request<SavedMatchListResponse>(`/api/v1/saved-matches?kind=${kind}`, undefined, options),
+  saveMatch: (runId: string, candidateId: number, options?: RequestOptions) =>
+    request<SavedMatch>("/api/v1/saved-matches", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId, candidate_id: candidateId }),
+    }, options),
+  deleteSavedMatch: (savedId: string, options?: RequestOptions) =>
+    request<void>(`/api/v1/saved-matches/${savedId}`, { method: "DELETE" }, options),
   compareRuns: (runIdA: string, runIdB: string, options?: RequestOptions) =>
     request<Comparison>("/api/v1/comparisons", {
       method: "POST",

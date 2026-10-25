@@ -322,6 +322,26 @@ class RunDetail(BaseModel):
     ranked: list[RankedEntry]
 
 
+class SaveMatchRequest(BaseModel):
+    run_id: UUID
+    candidate_id: int = Field(ge=0)
+
+
+class SavedMatchResponse(BaseModel):
+    saved_id: UUID
+    run_id: UUID
+    kind: CorpusKind
+    brief: BriefPayload
+    candidate: dict[str, Any]
+    ranked: dict[str, Any]
+    source_created_at: datetime
+    created_at: datetime
+
+
+class SavedMatchListResponse(BaseModel):
+    items: list[SavedMatchResponse]
+
+
 class ComparisonRequest(BaseModel):
     run_id_a: UUID
     run_id_b: UUID

@@ -455,6 +455,92 @@
   }
 }
 
+/* Formal type system for the public landing page. */
+.landing-page,
+.landing-auth-loading {
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+  font-kerning: normal;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.landing-page {
+  --landing-display-tracking: -.035em;
+  --landing-body-leading: 1.72;
+}
+.landing-brand {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+.landing-nav-links a,
+.landing-signin,
+.landing-footer a {
+  font-size: .86rem;
+  font-weight: 450;
+  letter-spacing: .005em;
+}
+.landing-button,
+.landing-text-link,
+.landing-card-link {
+  font-family: inherit;
+  font-size: .88rem;
+  font-weight: 600;
+  letter-spacing: .005em;
+}
+.landing-hero h1,
+.landing-section-heading h2,
+.landing-process-heading h2,
+.landing-cta h2 {
+  font-family: inherit;
+  font-weight: 500;
+  letter-spacing: var(--landing-display-tracking);
+  text-wrap: balance;
+}
+.landing-hero h1 {
+  line-height: 1.08;
+}
+.landing-hero-description,
+.landing-section-heading > p:last-child,
+.landing-process-heading > p:not(.landing-overline),
+.landing-step p,
+.landing-feature-card > p {
+  font-size: .94rem;
+  line-height: var(--landing-body-leading);
+  letter-spacing: .002em;
+}
+.landing-kicker,
+.landing-overline,
+.feature-label,
+.landing-preview-caption,
+.preview-heading > span,
+.preview-prompt > span,
+.creator-visual-header,
+.company-visual-header {
+  font-weight: 600;
+  letter-spacing: .11em;
+}
+.landing-feature-card h3,
+.landing-step h3 {
+  font-weight: 550;
+  letter-spacing: -.015em;
+}
+.preview-app,
+.creator-visual,
+.company-visual {
+  font-family: var(--font-sans);
+}
+.preview-score strong,
+.creator-visual-profile > strong,
+.visual-stat-row b,
+.company-visual-footer b,
+.feature-index,
+.landing-step-number {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Formal finish: remove ornamental arrows and hairline separators. */
 .landing-button > span,
 .landing-text-link > span,

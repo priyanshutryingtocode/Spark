@@ -9,6 +9,7 @@ import { ErrorNote, NOTE_TITLES } from "../components/SystemNote";
 import { PageIntro } from "../components/PageIntro";
 import { RangeControl } from "../components/RangeControl";
 import { ResultList } from "../components/ResultList";
+import { MatchDetailsDialog } from "../components/MatchDetailsDialog";
 import { TargetFields } from "../components/TargetFields";
 import { RunContext } from "../components/RunContext";
 import { RunStatus } from "../components/RunStatus";
@@ -17,7 +18,7 @@ import { WarningBanner } from "../components/WarningBanner";
 import { useMatchJob } from "../hooks/useMatchJob";
 import { Skeleton } from "../components/Skeleton";
 import { useResource } from "../hooks/useResource";
-import type { Brief, CorpusKind, Meta, RunDetail } from "../types";
+import type { Brief, CorpusKind, Meta, RunDetail, SavedMatchListResponse } from "../types";
 
 const emptyBrief: Brief = {
   goal: "",
@@ -70,6 +71,9 @@ export function SearchPage() {
   const [topN, setTopN] = useState(5);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
+  const [savingMatch, setSavingMatch] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const { job, error, isRunning, start } = useMatchJob();
   const [hasStarted, setHasStarted] = useState(false);
 
@@ -103,6 +107,12 @@ export function SearchPage() {
     },
   );
 
+  const savedMatches = useResource<SavedMatchListResponse>(
+    (signal) => api.listSavedMatches(kind, { signal }),
+    [kind],
+    { fallbackError: "Could not load your saved shortlist." },
+  );
+
   const run = useResource<RunDetail>(
     (signal) => api.getRun(job!.run_id!, { signal }),
     [job?.run_id],
@@ -125,9 +135,27 @@ export function SearchPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setHasStarted(true);
+    setSelectedMatchId(null);
+    setSaveError(null);
     run.setData(null);
     run.setError(null);
     await start(brief, { top_k: topK, top_n: topN }, kind);
+  }
+
+  async function saveSelectedMatch() {
+    if (!runDetail || !selectedCandidate || savingMatch) return;
+    setSavingMatch(true);
+    setSaveError(null);
+    try {
+      const saved = await api.saveMatch(runDetail.run_id, selectedCandidate.id);
+      savedMatches.setData({
+        items: [saved, ...(savedMatches.data?.items ?? []).filter((item) => item.saved_id !== saved.saved_id)],
+      });
+    } catch (caught) {
+      setSaveError(caught instanceof ApiError ? caught.message : "Could not save this match.");
+    } finally {
+      setSavingMatch(false);
+    }
   }
 
   const metaValue = meta.data;
@@ -138,10 +166,21 @@ export function SearchPage() {
   const goal = brief.goal;
   const goalLength = goal.trim().length;
   const goalTooShort = goalLength > 0 && goalLength < limits.goal_min_length;
+  const optionalFieldCount = Object.entries(brief).filter(([field, value]) => {
+    if (field === "goal" || field === "platform" || value == null) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "number") return value > 0;
+    return Boolean(value);
+  }).length;
   const awaitingRun = job?.status === "succeeded"
     && !runDetail
     && (run.loading || !run.error)
     && job.outcome !== "no_results";
+  const selectedEntry = runDetail?.ranked.find((entry) => entry.id === selectedMatchId);
+  const selectedCandidate = selectedEntry
+    ? runDetail?.candidates.find((candidate) => candidate.id === selectedEntry.id)
+    : undefined;
 
   return (
     <section className="page-section">
@@ -211,27 +250,37 @@ export function SearchPage() {
                     </select>
                   </label>
                 )}
-                <label className="brief-field" htmlFor="audience">
-                  <span>Target audience <em>optional</em></span>
-                  <input id="audience" value={brief.audience} maxLength={limits.audience_max_length} placeholder="e.g. GenZ, first-time buyers" onChange={(event) => updateBrief("audience", event.target.value)} />
-                </label>
-                <label className="brief-field" htmlFor="vibe">
-                  <span>Vibe or tone <em>optional</em></span>
-                  <textarea id="vibe" value={brief.vibe} maxLength={limits.vibe_max_length} placeholder="e.g. warm, practical" onChange={(event) => updateBrief("vibe", event.target.value)} rows={2} />
-                </label>
               </div>
-              <div className="rail-divider" />
-              {/* The requirements, as opposed to the wording. The free text
-                  above still drives the embedding; these drive the filters and
-                  the rerank, so a brief can be precise about its audience or its
-                  ICP without having to say it in prose. */}
-              <div className="brief-section">
-                <div className="control-heading">
-                  <span>{kind === "creator" ? "Target audience" : "Target accounts"}</span>
-                  <span className="control-value">optional</span>
+              <details className="optional-fields-disclosure">
+                <summary>
+                  <span className="optional-fields-title">Refine your match</span>
+                  <span className="optional-fields-status">
+                    {optionalFieldCount > 0 ? `${optionalFieldCount} added` : "Optional"}
+                  </span>
+                </summary>
+                <div className="optional-fields-content">
+                  <div className="brief-fields">
+                    <label className="brief-field" htmlFor="audience">
+                      <span>Target audience <em>optional</em></span>
+                      <input id="audience" value={brief.audience} maxLength={limits.audience_max_length} placeholder="e.g. Gen Z, first-time buyers" onChange={(event) => updateBrief("audience", event.target.value)} />
+                    </label>
+                    <label className="brief-field" htmlFor="vibe">
+                      <span>Vibe or tone <em>optional</em></span>
+                      <textarea id="vibe" value={brief.vibe} maxLength={limits.vibe_max_length} placeholder="e.g. warm, practical" onChange={(event) => updateBrief("vibe", event.target.value)} rows={2} />
+                    </label>
+                  </div>
+                  <div className="rail-divider" />
+                  {/* These requirements filter or rerank candidates. The prose
+                      brief above still drives semantic retrieval. */}
+                  <div className="brief-section">
+                    <div className="control-heading">
+                      <span>{kind === "creator" ? "Target audience" : "Target accounts"}</span>
+                      <span className="control-value">optional</span>
+                    </div>
+                    <TargetFields kind={kind} values={brief} onChange={updateTarget} />
+                  </div>
                 </div>
-                <TargetFields kind={kind} values={brief} onChange={updateTarget} />
-              </div>
+              </details>
               <div className="rail-divider" />
               <div className="retrieval-controls">
                 <div className="control-heading"><span>Search depth</span><span className="control-value">{topK} → {topN}</span></div>
@@ -303,7 +352,29 @@ export function SearchPage() {
                 />
                 <WarningBanner warnings={runDetail.warnings} />
                 <SummaryMetrics summary={runDetail.summary} />
-                <ResultList kind={kind} run={runDetail} />
+                <ResultList
+                  kind={runDetail.kind}
+                  run={runDetail}
+                  selectedId={selectedEntry?.id}
+                  onSelect={(id) => {
+                    setSelectedMatchId(id);
+                    setSaveError(null);
+                  }}
+                />
+                {selectedEntry && selectedCandidate && (
+                  <MatchDetailsDialog
+                    kind={runDetail.kind}
+                    candidate={selectedCandidate}
+                    entry={selectedEntry}
+                    saved={savedMatches.data?.items.some((item) =>
+                      item.run_id === runDetail.run_id && item.ranked.id === selectedEntry.id,
+                    ) ?? false}
+                    saving={savingMatch}
+                    saveError={saveError}
+                    onSave={() => void saveSelectedMatch()}
+                    onClose={() => setSelectedMatchId(null)}
+                  />
+                )}
               </div>
             )}
           </div>

@@ -10,13 +10,15 @@ import type { CardVariant } from "./resultShared";
  *  malformed snapshot would silently render as the other kind.
  */
 export function ResultCard({
-  kind, candidate, entry, brief, highlight = false, variant = "full",
+  kind, candidate, entry, brief, highlight = false, selected = false, onSelect, variant = "full",
 }: {
   kind: CorpusKind;
   candidate: CreatorSnapshot | ProspectSnapshot;
   entry: RankedEntry;
   brief: Brief;
   highlight?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   variant?: CardVariant;
 }) {
   if (kind === "prospect") {
@@ -26,6 +28,8 @@ export function ResultCard({
         entry={entry}
         brief={brief}
         highlight={highlight}
+        selected={selected}
+        onSelect={onSelect}
         variant={variant}
       />
     );
@@ -36,6 +40,8 @@ export function ResultCard({
       entry={entry}
       brief={brief}
       highlight={highlight}
+      selected={selected}
+      onSelect={onSelect}
       variant={variant}
     />
   );

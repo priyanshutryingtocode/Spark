@@ -1,6 +1,6 @@
 /* Brief rail: the match form, suggestion chips, retrieval controls. */
 
-.match-workspace { display: grid; grid-template-columns: 17.5rem minmax(0, 1fr); gap: var(--space-7); align-items: start; }
+.match-workspace { display: grid; grid-template-columns: minmax(18rem, 1fr) minmax(0, 2fr); gap: var(--space-7); align-items: start; }
 .brief-rail { min-width: 0; padding-right: var(--space-6); border-right: 1px solid var(--rule); }
 .rail-heading, .ledger-heading, .control-heading, .section-heading.compact, .run-status-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .rail-heading, .ledger-heading { padding-bottom: var(--space-3); color: var(--muted-strong); font-size: var(--text-xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -104,3 +104,31 @@ input[type="range"] { padding: 0; border: 0; background: transparent; accent-col
 .target-help { margin: 0; color: var(--muted); font-size: var(--text-2xs); line-height: 1.5; }
 
 .brief-section { display: grid; gap: var(--space-3); }
+.optional-fields-disclosure {
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+.optional-fields-disclosure > summary {
+  display: flex;
+  width: 100%;
+  min-height: 1.5rem;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+}
+.optional-fields-title { font-weight: 650; }
+.optional-fields-status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  text-align: right;
+}
+.optional-fields-content {
+  display: grid;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}

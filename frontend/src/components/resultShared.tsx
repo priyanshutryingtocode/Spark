@@ -100,6 +100,19 @@ export function ResultRank({ rank }: { rank: number }) {
   );
 }
 
+/** Initials are a neutral placeholder until profile image URLs are available. */
+export function CandidateAvatar({ name, kind }: { name: string; kind: "creator" | "prospect" }) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const initials = words.length > 1
+    ? `${words[0][0]}${words[words.length - 1][0]}`
+    : (words[0] ?? "?").slice(0, 2);
+  return (
+    <span className={`result-avatar result-avatar-${kind}`} aria-hidden="true">
+      {initials.toUpperCase()}
+    </span>
+  );
+}
+
 /** Fit verdict, cosine similarity, and any reason the row fell back.
  *
  *  Identical for both corpora: the ranking contract and its failure modes do not

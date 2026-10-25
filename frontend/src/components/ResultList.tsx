@@ -10,6 +10,8 @@ interface ResultListProps {
   /** Candidate keys to tint; Compare uses this to mark the shared entries. */
   highlightKeys?: Set<string>;
   className?: string;
+  selectedId?: number;
+  onSelect?: (id: number) => void;
   /** How much of each row to show. Compare asks for `compact`, because the same
    *  row appears in both of its columns. */
   variant?: CardVariant;
@@ -30,7 +32,7 @@ const emptyPhrases: Record<CorpusKind, { missing: string; none: string }> = {
 
 /** A ranked shortlist, skipping entries whose snapshot is missing. Shared by the
  *  pages so they cannot drift apart. */
-export function ResultList({ kind, run, highlightKeys, className, variant = "full" }: ResultListProps) {
+export function ResultList({ kind, run, highlightKeys, className, variant = "full", selectedId, onSelect }: ResultListProps) {
   const phrases = emptyPhrases[kind];
   const byId = new Map(run.candidates.map((candidate) => [candidate.id, candidate]));
   const cards = run.ranked.map((entry) => {
@@ -44,6 +46,8 @@ export function ResultList({ kind, run, highlightKeys, className, variant = "ful
         entry={entry}
         brief={run.brief}
         highlight={highlightKeys?.has(candidate.creator_key) ?? false}
+        selected={selectedId === entry.id}
+        onSelect={onSelect ? () => onSelect(entry.id) : undefined}
         variant={variant}
       />
     );

@@ -184,15 +184,125 @@ def audience_match(candidate, expected_audience: dict) -> bool:
     countries = expected_audience.get("countries") or []
     if countries and str(candidate.audience_country) not in {str(c) for c in countries}:
         return False
-    gender = str(expected_audience.get("gender") or "any").strip().lower()
+    return audience_gender_match(candidate, expected_audience.get("gender"))
+
+
+def audience_gender_match(candidate, expected_gender) -> bool:
+    gender = str(expected_gender or "any").strip().lower()
     if gender in {"", "any"}:
         return True
-    split = str(candidate.audience_gender).lower()
+    split = str(getattr(candidate, "audience_gender", "") or "").lower()
     if gender.startswith("f"):
         return "female" in split and "male" not in split
     if gender.startswith("m"):
         return "male" in split and "female" not in split
     return True
+
+
+def fit_dimension_scores(items, expected_fit: dict, corpus=None) -> tuple[dict, float | None]:
+    """Score each stated audience/ICP requirement and required-field coverage.
+
+    Overall fit is useful as a headline but hides which constraint is failing.
+    A missing value fails its fit dimension; coverage separately identifies
+    when the source record did not provide the fields needed to judge the fit.
+    Dimensions not requested by a case are omitted.
+    """
+    if not expected_fit:
+        return {}, None
+
+    if corpus is not None and corpus.kind != "creator":
+        industries = expected_fit.get("industries") or []
+        if industries and getattr(corpus, "vertical_column", None):
+            from src.scoring import expand_vertical
+
+            industries = expand_vertical(list(industries), corpus.verticals)
+        size = expected_fit.get("size")
+        countries = expected_fit.get("countries") or []
+        checks = {}
+        if industries:
+            wanted = {str(value) for value in industries}
+            checks["industry"] = (
+                lambda item: bool(str(getattr(item, "industry", "") or "").strip()),
+                lambda item: str(getattr(item, "industry", "")) in wanted,
+            )
+        if size:
+            low, high = size
+            checks["size"] = (
+                lambda item: getattr(item, "headcount", None) is not None,
+                lambda item: getattr(item, "headcount", None) is not None
+                and low <= int(item.headcount) <= high,
+            )
+        if countries:
+            wanted = {str(value) for value in countries}
+            checks["country"] = (
+                lambda item: bool(str(getattr(item, "country", "") or "").strip()),
+                lambda item: str(getattr(item, "country", "")) in wanted,
+            )
+    else:
+        ages = {str(value) for value in expected_fit.get("age", [])}
+        countries = {str(value) for value in expected_fit.get("countries", [])}
+        gender = expected_fit.get("gender")
+        checks = {}
+        if ages:
+            checks["audience_age"] = (
+                lambda item: bool(str(getattr(item, "audience_age", "") or "").strip()),
+                lambda item: str(getattr(item, "audience_age", "")) in ages,
+            )
+        if countries:
+            checks["audience_country"] = (
+                lambda item: bool(str(getattr(item, "audience_country", "") or "").strip()),
+                lambda item: str(getattr(item, "audience_country", "")) in countries,
+            )
+        if gender and str(gender).strip().lower() not in {"", "any"}:
+            checks["audience_gender"] = (
+                lambda item: bool(str(getattr(item, "audience_gender", "") or "").strip()),
+                lambda item: audience_gender_match(item, gender),
+            )
+
+    if not checks:
+        return {}, None
+    scores = {
+        name: round(sum(1 for item in items if matches(item)) / len(items), 3)
+        if items else 0.0
+        for name, (_, matches) in checks.items()
+    }
+    coverage = round(
+        sum(1 for item in items if all(has_value(item) for has_value, _ in checks.values()))
+        / len(items),
+        3,
+    ) if items else 0.0
+    return scores, coverage
+
+
+def summarize_fit_metrics(case_results: list[dict], ranks: bool) -> tuple[dict, dict]:
+    """Macro-average each requested fit dimension and coverage across cases.
+
+    `cases` is included beside every mean because dimensions can be absent from
+    some briefs. The average is case-weighted, so a case with many matching
+    candidates cannot dominate the suite.
+    """
+    levels = ["retrieval", "reranked"] + (["ranked"] if ranks else [])
+    dimensions_summary: dict[str, dict] = {}
+    coverage_summary: dict[str, dict] = {}
+    for level in levels:
+        per_dimension: dict[str, list[float]] = {}
+        coverage_values: list[float] = []
+        for case in case_results:
+            for name, value in case.get("fit_dimensions_at_n", {}).get(level, {}).items():
+                if value is not None:
+                    per_dimension.setdefault(name, []).append(value)
+            coverage = case.get("fit_data_coverage_at_n", {}).get(level)
+            if coverage is not None:
+                coverage_values.append(coverage)
+        dimensions_summary[level] = {
+            name: {"mean_precision": round(mean(values), 3), "cases": len(values)}
+            for name, values in sorted(per_dimension.items())
+        }
+        coverage_summary[level] = {
+            "mean_coverage": round(mean(coverage_values), 3) if coverage_values else None,
+            "cases": len(coverage_values),
+        }
+    return dimensions_summary, coverage_summary
 
 
 def audience_precision(items, expected_audience: dict) -> float:
@@ -422,7 +532,27 @@ def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None,
         "search_latency_ms": search_ms,
     }
 
+    retrieval_dimensions, retrieval_coverage = fit_dimension_scores(
+        candidates[:top_n], expected_fit, corpus
+    )
+    reranked_dimensions, reranked_coverage = fit_dimension_scores(
+        reranked[:top_n], expected_fit, corpus
+    )
+    result["fit_dimensions_at_n"] = {
+        "retrieval": retrieval_dimensions,
+        "reranked": reranked_dimensions,
+    }
+    result["fit_data_coverage_at_n"] = {
+        "retrieval": retrieval_coverage,
+        "reranked": reranked_coverage,
+    }
+
     if ranks:
+        ranked_dimensions, ranked_coverage = fit_dimension_scores(
+            ranked_candidates, expected_fit, corpus
+        )
+        result["fit_dimensions_at_n"]["ranked"] = ranked_dimensions
+        result["fit_data_coverage_at_n"]["ranked"] = ranked_coverage
         result.update({
             "ranked_tag_precision_at_n": round(tag_precision(ranked_candidates, expected_tags), 3),
             "ranking_gain_at_n": round(
@@ -550,6 +680,9 @@ def main() -> None:
         "mean_ceiling_precision_at_k": round(mean(item["ceiling_precision_at_k"] for item in report_results), 3),
         "wall_clock_seconds": round(total_wall, 1),
     }
+    fit_dimensions, fit_coverage = summarize_fit_metrics(report_results, ranks)
+    summary["fit_dimension_precision_at_n"] = fit_dimensions
+    summary["fit_data_coverage_at_n"] = fit_coverage
 
     if ranks:
         summary.update({

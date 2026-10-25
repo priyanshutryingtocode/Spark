@@ -1,6 +1,7 @@
 import type { Brief, CreatorSnapshot, RankedEntry } from "../types";
 import {
   GroundingList,
+  CandidateAvatar,
   Metric,
   ProportionBar,
   ResultFit,
@@ -11,12 +12,14 @@ import {
 import type { CardVariant } from "./resultShared";
 
 export function CreatorResultCard({
-  creator, entry, brief, highlight = false, variant = "full",
+  creator, entry, brief, highlight = false, selected = false, onSelect, variant = "full",
 }: {
   creator: CreatorSnapshot;
   entry: RankedEntry;
   brief: Brief;
   highlight?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   variant?: CardVariant;
 }) {
   // Platform is a hard filter on the run, so naming it on every row of a
@@ -34,14 +37,17 @@ export function CreatorResultCard({
 
   return (
     <article
-      className={["result-row", compact && "result-row-compact", highlight && "result-row-highlight"].filter(Boolean).join(" ")}
+      className={["result-row", compact && "result-row-compact", highlight && "result-row-highlight", selected && "result-row-selected"].filter(Boolean).join(" ")}
       aria-label={`Match ${entry.rank} for ${brief.goal}`}
     >
       <ResultRank rank={entry.rank} />
       <div className="result-identity">
         <div className="result-identity-heading">
-          <h3>{creator.handle}</h3>
-          {creator.name && <span className="result-display-name">{creator.name}</span>}
+          <CandidateAvatar name={creator.name || creator.handle} kind="creator" />
+          <div className="result-title-stack">
+            <h3>{creator.name || creator.handle}</h3>
+            {creator.name && <span className="result-display-name">{creator.handle}</span>}
+          </div>
           {creator.verified && <span className="verified-mark">Verified</span>}
         </div>
         {/* The compact row holds the identity to two lines -- the name and one
@@ -119,6 +125,16 @@ export function CreatorResultCard({
           </>
         )}
       </ResultRationale>
+      {onSelect && (
+        <button
+          className="result-detail-trigger"
+          type="button"
+          aria-pressed={selected}
+          onClick={onSelect}
+        >
+          {selected ? "Profile open" : "View profile"}
+        </button>
+      )}
     </article>
   );
 }

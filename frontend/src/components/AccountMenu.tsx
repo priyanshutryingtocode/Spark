@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { User } from "@supabase/supabase-js";
 
 interface AccountMenuProps {
@@ -13,6 +14,7 @@ interface AccountIdentity {
 }
 
 export function AccountMenu({ user, signOut }: AccountMenuProps) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export function AccountMenu({ user, signOut }: AccountMenuProps) {
     setError(null);
     try {
       await signOut();
+      navigate("/", { replace: true });
     } catch {
       setError("Could not sign out. Please try again.");
       setSigningOut(false);

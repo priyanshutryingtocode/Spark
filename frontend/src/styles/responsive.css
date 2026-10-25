@@ -2,28 +2,27 @@
    layer, so a breakpoint override always beats the layout it adjusts. */
 
 @container result-list (max-width: 860px) {
-  .result-list:not(.compare-result-list) .result-row {
+  .result-list .result-row {
     grid-template-columns: 36px minmax(0, 1fr) 88px minmax(180px, .9fr);
     grid-template-areas: "rank identity identity fit" "rank metrics metrics rationale";
     column-gap: var(--space-3);
     row-gap: var(--space-3);
   }
-  .result-list:not(.compare-result-list) .result-rank { grid-area: rank; }
-  .result-list:not(.compare-result-list) .result-identity { grid-area: identity; }
-  .result-list:not(.compare-result-list) .result-fit { grid-area: fit; }
-  .result-list:not(.compare-result-list) .result-metrics { grid-area: metrics; }
-  .result-list:not(.compare-result-list) .result-rationale { grid-area: rationale; }
+  .result-list .result-rank { grid-area: rank; }
+  .result-list .result-identity { grid-area: identity; }
+  .result-list .result-fit { grid-area: fit; }
+  .result-list .result-metrics { grid-area: metrics; }
+  .result-list .result-rationale { grid-area: rationale; }
 }
 
 @media (max-width: 1100px) {
   /* 18rem, not 16rem: the base sidebar grew to 340px and this is where the
      ledger holds the longest goal text, so the narrow case needs the room. */
-  .match-workspace, .history-layout, .skeleton-workspace { grid-template-columns: 18rem minmax(0, 1fr); gap: var(--space-7); }
+  .match-workspace { grid-template-columns: minmax(18rem, 1fr) minmax(0, 2fr); gap: var(--space-7); }
+  .history-layout, .skeleton-workspace { grid-template-columns: 18rem minmax(0, 1fr); gap: var(--space-7); }
   .result-row { grid-template-columns: 40px minmax(160px, 1.2fr) 90px 155px minmax(160px, 1fr); gap: var(--space-3); }
-  .compare-result-list .result-row { grid-template-columns: 30px minmax(0, 1fr) 110px 135px; }
-  /* The compare columns are half the page each, so they are narrower than the
-     page and the compact row's fixed metric column has to give some back. */
-  .compare-result-list .result-row-compact { grid-template-columns: 28px minmax(0, 1fr) 92px 124px; }
+  .saved-matches-layout { grid-template-columns: 1fr; }
+  .match-details-panel { position: static; max-height: none; }
 }
 
 @media (max-width: 900px) {
@@ -99,32 +98,18 @@
   .summary-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .summary-item:nth-child(n + 4) { border-top: 1px solid var(--rule); }
   .summary-item:nth-child(4) { border-left: 0; }
-  .result-row, .compare-result-list .result-row { grid-template-columns: 36px minmax(0, 1fr); gap: var(--space-3); }
-  .result-list:not(.compare-result-list) .result-row { grid-template-areas: "rank identity" "rank fit" "rank metrics" "rank rationale"; }
-  .result-list:not(.compare-result-list) .result-rank { grid-area: rank; }
-  .result-list:not(.compare-result-list) .result-identity { grid-area: identity; }
-  .result-list:not(.compare-result-list) .result-fit { grid-area: fit; }
-  .result-list:not(.compare-result-list) .result-metrics { grid-area: metrics; }
-  .result-list:not(.compare-result-list) .result-rationale { grid-area: rationale; }
-    .compare-result-list .result-fit, .compare-result-list .result-metrics, .compare-result-list .result-rationale { grid-column: 2; }
-    /* The compare columns stack here, so the compact row has the full width to
-       itself and its fixed metric column can go back to being generous. */
-    .compare-result-list .result-row-compact { grid-template-columns: 32px minmax(0, 1fr); }
-    .compare-result-list .result-row-compact .result-metrics { max-width: none; }
+  .result-row { grid-template-columns: 36px minmax(0, 1fr); gap: var(--space-3); }
+  .result-list .result-row { grid-template-areas: "rank identity" "rank fit" "rank metrics" "rank rationale"; }
+  .result-list .result-rank { grid-area: rank; }
+  .result-list .result-identity { grid-area: identity; }
+  .result-list .result-fit { grid-area: fit; }
+  .result-list .result-metrics { grid-area: metrics; }
+  .result-list .result-rationale { grid-area: rationale; }
   .result-fit { display: flex; gap: var(--space-2); }
   .result-fit .source-label { display: inline; }
   .result-metrics { max-width: 360px; }
     .compare-toolbar { grid-template-columns: 1fr; align-items: stretch; }
     .swap-button { justify-self: center; }
-    /* The overview is flex at desktop so the cell count can vary with the run.
-       It becomes a grid here, so the cells wrap into two columns. The vertical
-       separators go with it -- a left border on the first cell of a wrapped row
-       draws a stray line down the margin -- and the rows are separated by a top
-       border instead. */
-    .compare-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .overview-primary { grid-column: 1 / -1; border-bottom: 1px solid var(--rule); }
-    .overview-delta { border-left: 0; }
-    .overview-delta:nth-child(n + 4) { border-top: 1px solid var(--rule); }
     .compare-columns { grid-template-columns: 1fr; gap: var(--space-6); }
     /* The columns stack, so the hairline between them would run down the middle
        of the page. */
@@ -186,10 +171,6 @@
   .summary-explain-body { max-width: none; }
   .result-row { padding: var(--space-3); }
   .result-metrics { gap: var(--space-1); }
-  .overlap-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* Two 140px columns needed 288px, which is the entire 320px viewport once
-     the gutter is subtracted -- so any zoom overflowed horizontally. */
-  .overlap-item { min-width: 0; }
   /* The 4-column pipeline had no breakpoint at any width, so at 320px each
      step was ~66px and the labels wrapped mid-word. */
   .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }

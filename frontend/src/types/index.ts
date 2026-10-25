@@ -194,6 +194,21 @@ export interface RunDetail {
   ranked: RankedEntry[];
 }
 
+export interface SavedMatch {
+  saved_id: string;
+  run_id: string;
+  kind: CorpusKind;
+  brief: Brief;
+  candidate: CreatorSnapshot | ProspectSnapshot;
+  ranked: RankedEntry;
+  source_created_at: string;
+  created_at: string;
+}
+
+export interface SavedMatchListResponse {
+  items: SavedMatch[];
+}
+
 export interface Comparison {
   summary_a: RunSummary;
   summary_b: RunSummary;

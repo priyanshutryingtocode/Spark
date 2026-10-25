@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 from typing import Any, Callable
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
@@ -162,6 +162,90 @@ class PostgresRunRepository:
             ).fetchone()
         return row is not None
 
+    def save_match(self, run_id: UUID, candidate_id: int, owner_id=None) -> dict | None:
+        owner = _as_uuid(owner_id)
+        run = self.get(run_id, owner_id=owner)
+        if run is None:
+            return None
+        result = run.get("result") or {}
+        candidate = next(
+            (item for item in result.get("candidates", []) if item.get("id") == candidate_id),
+            None,
+        )
+        ranked = next(
+            (item for item in result.get("ranked", []) if item.get("id") == candidate_id),
+            None,
+        )
+        if candidate is None or ranked is None:
+            return None
+
+        saved_id = uuid4()
+        with self._connection_factory() as conn:
+            conn.execute(
+                """
+                INSERT INTO saved_matches
+                    (id, owner_id, run_id, candidate_id, kind, brief, candidate,
+                     ranked, source_created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    saved_id,
+                    owner,
+                    run_id,
+                    candidate_id,
+                    run["kind"],
+                    Jsonb(run["brief"]),
+                    Jsonb(candidate),
+                    Jsonb(ranked),
+                    run["created_at"],
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT id, run_id, kind, brief, candidate, ranked,
+                       source_created_at, created_at
+                FROM saved_matches
+                WHERE owner_id IS NOT DISTINCT FROM %s
+                  AND run_id = %s AND candidate_id = %s
+                """,
+                (owner, run_id, candidate_id),
+            ).fetchone()
+        return _saved_match_from_row(row) if row else None
+
+    def list_saved_matches(self, owner_id=None, kind: str | None = None) -> list[dict]:
+        owner = _as_uuid(owner_id)
+        where = ["owner_id IS NOT DISTINCT FROM %s"]
+        params: list[Any] = [owner]
+        if kind is not None:
+            where.append("kind = %s")
+            params.append(kind)
+        with self._connection_factory() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, run_id, kind, brief, candidate, ranked,
+                       source_created_at, created_at
+                FROM saved_matches
+                WHERE {' AND '.join(where)}
+                ORDER BY created_at DESC, id DESC
+                """,
+                params,
+            ).fetchall()
+        return [_saved_match_from_row(row) for row in rows]
+
+    def delete_saved_match(self, saved_id: UUID, owner_id=None) -> bool:
+        owner = _as_uuid(owner_id)
+        with self._connection_factory() as conn:
+            row = conn.execute(
+                """
+                DELETE FROM saved_matches
+                WHERE id = %s AND owner_id IS NOT DISTINCT FROM %s
+                RETURNING id
+                """,
+                (saved_id, owner),
+            ).fetchone()
+        return row is not None
+
 
 def _record_from_row(row) -> dict:
     return {
@@ -178,6 +262,19 @@ def _record_from_row(row) -> dict:
         "summary": row[7],
         "created_at": row[8],
         "updated_at": row[9],
+    }
+
+
+def _saved_match_from_row(row) -> dict:
+    return {
+        "id": row[0],
+        "run_id": row[1],
+        "kind": row[2],
+        "brief": row[3],
+        "candidate": row[4],
+        "ranked": row[5],
+        "source_created_at": row[6],
+        "created_at": row[7],
     }
 
 

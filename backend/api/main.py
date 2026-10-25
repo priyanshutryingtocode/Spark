@@ -25,8 +25,11 @@ from api.schemas.models import (
     MetaResponse,
     RunDetail,
     RunListResponse,
+    SaveMatchRequest,
+    SavedMatchListResponse,
+    SavedMatchResponse,
 )
-from api.serialization import run_detail, run_list_item
+from api.serialization import run_detail, run_list_item, saved_match_response
 from api.services.compare_service import compare_runs
 from api.services.csv_export import build_csv
 from src import config, vector_store
@@ -93,20 +96,8 @@ def create_app(
         application.state.database_available = False
         application.state.index_model_mismatch = False
         application.state.indexed_count = indexed_count or 0
-        # Per-corpus counts. `indexed_count` keeps its original meaning -- the
-        # creator index -- because it is what the readiness gate and the injected
-        # `indexed_count=` test argument mean. A corpus absent from this map reads
-        # as empty rather than falling back to the creator count, so an app
-        # reporting 10 indexed creators does not also claim 10 companies.
-        # An injected `indexed_count=` means the creator index and nothing else,
-        # so it seeds the creator entry and leaves every other corpus reading as
-        # empty. Fabricating a company count from it would let a Companies panel
-        # render "500 companies indexed" against an index that was never built.
-        # Assigned here, before the probe: `initialize_database` overwrites it
-        # with a real count of every corpus, but when initialisation is off this
-        # is the only place the injected count lands. Not synced afterwards --
-        # doing that overwrote an explicit `indexed_counts` with `indexed_count`,
-        # so an app declaring 2000 creators reported 0.
+        # Keep the legacy count creator-only; never infer other corpus counts from it.
+        # Database initialization replaces this seed with actual per-corpus counts.
         application.state.indexed_counts = (
             indexed_counts
             if indexed_counts is not None
@@ -232,26 +223,11 @@ def create_app(
         _refresh_index_state(request)
         corpus = get_corpus(kind)
         return {
-            # Empty for a corpus with no platform facet. A company is not on
-            # TikTok, so offering the list would be offering a filter that does
-            # nothing -- and `facet_is_hard_filter` is False for prospects, so a
-            # value sent here is silently ignored rather than honoured.
+            # A corpus without this facet gets no options, since it cannot filter on them.
             "platforms": ["Any", *PLATFORMS] if corpus.facet_column == "platform" else [],
             "defaults": {
-                # Empty, not sample briefs. The Search page offers starter
-                # prompts, and pre-filling would make it ambiguous whether the
-                # user actually typed it. Every key has to exist even when its
-                # value is empty, because the frontend reads it on each meta load.
-                #
-                # For the two optional fields this is also load-bearing rather
-                # than cosmetic: Brief.query_text() folds a non-empty audience or
-                # vibe into the embedded query, so the old "Gen Z" / "warm,
-                # friendly" here silently prepended themselves to every run's
-                # ranking. All 10 cases in evaluation_cases.json already leave
-                # these blank, so the reported hit rate and precision were
-                # measured goal-only and the form diverged from the config it
-                # reports on. Do not restore example values here -- put them in
-                # the frontend's suggestion chips.
+                # Keep optional brief fields empty; non-empty defaults would alter every search.
+                # Starter prompts belong in the UI, not in the API configuration.
                 "goal": "",
                 "audience": "",
                 "vibe": "",
@@ -269,11 +245,7 @@ def create_app(
                 "goal_max_length": config.MAX_GOAL_LENGTH,
             },
             "index": {
-                # Per corpus, and from the same count the readiness gate uses.
-                # Deriving status from the creator-only `db_ready` reported
-                # "ready" beside "count: 0", which showed a green pill and
-                # enabled Search for a corpus that had nothing indexed -- and
-                # the POST was then refused by `_require_ready`.
+                # Report readiness from the selected corpus count, matching the request gate.
                 "status": (
                     "reindex_required"
                     if request.app.state.index_model_mismatch
@@ -411,6 +383,34 @@ def create_app(
                 },
             )
         return compare_runs(run_a, run_b, get_corpus(kind_a))
+
+    @application.get("/api/v1/saved-matches", response_model=SavedMatchListResponse)
+    def list_saved_matches(request: Request, kind: CorpusKind | None = None):
+        owner_id = current_user_id(request)
+        repository = _repository(request)
+        records = repository.list_saved_matches(owner_id=owner_id, kind=kind)
+        return {"items": [saved_match_response(record) for record in records]}
+
+    @application.post(
+        "/api/v1/saved-matches",
+        response_model=SavedMatchResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def save_match(payload: SaveMatchRequest, request: Request):
+        owner_id = current_user_id(request)
+        repository = _repository(request)
+        record = repository.save_match(payload.run_id, payload.candidate_id, owner_id=owner_id)
+        if record is None:
+            raise _not_found("RUN_MATCH_NOT_FOUND", "Match not found in your run.")
+        return saved_match_response(record)
+
+    @application.delete("/api/v1/saved-matches/{saved_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_saved_match(saved_id: UUID, request: Request):
+        owner_id = current_user_id(request)
+        repository = _repository(request)
+        if not repository.delete_saved_match(saved_id, owner_id=owner_id):
+            raise _not_found("SAVED_MATCH_NOT_FOUND", "Saved match not found.")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return application
 

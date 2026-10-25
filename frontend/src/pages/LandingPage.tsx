@@ -111,14 +111,14 @@ export function LandingPage() {
     <main className="lp-page">
       <header className="lp-header">
         <nav className="lp-wrap lp-nav" aria-label="Main navigation">
-          <a className="lp-brand" href="#top" aria-label="Spark home">
-            <img src="/logo-mark.png" alt="" width={34} height={34} />
-            <span>Spark</span>
-          </a>
           <div className="lp-nav-links">
             <a href="#product">Product</a>
             <a href="#method">How it works</a>
           </div>
+          <a className="lp-brand" href="#top" aria-label="Spark home">
+            <img src="/logo-mark.png" alt="" width={30} height={30} />
+            <span>Spark</span>
+          </a>
           <div className="lp-nav-actions">
             <Link className="lp-nav-signin" to="/login">Sign in</Link>
             <Link className="lp-button lp-button--small" to="/signup">Get started</Link>
@@ -127,25 +127,21 @@ export function LandingPage() {
       </header>
 
       <section className="lp-wrap lp-hero" id="top" aria-labelledby="lp-title">
-        <p className="lp-eyebrow lp-hero-eyebrow">Creator and company matching</p>
         <h1 id="lp-title">From a rough brief to a shortlist you can defend.</h1>
-        <div className="lp-hero-aside">
-          <p>
-            Describe the creators your campaign needs, or the early-stage companies that fit your ICP.
-            Spark ranks the candidates and shows the evidence behind each match.
-          </p>
-          <div className="lp-actions">
-            <Link className="lp-button" to="/signup">Create your workspace</Link>
-            <a className="lp-link" href="#method">See how it works</a>
-          </div>
+        <p className="lp-lead">
+          Describe the creators your campaign needs, or the early-stage companies that fit your ICP.
+          Spark ranks the candidates and shows the evidence behind each match.
+        </p>
+        <div className="lp-actions">
+          <Link className="lp-button" to="/signup">Create your workspace</Link>
+          <a className="lp-link" href="#method">See how it works</a>
         </div>
         <ProductPreview />
       </section>
 
       <section className="lp-product" id="product" aria-labelledby="lp-product-title">
-        <div className="lp-wrap lp-grid">
-          <div className="lp-product-intro">
-            <p className="lp-eyebrow">Product</p>
+        <div className="lp-wrap">
+          <div className="lp-section-head">
             <h2 id="lp-product-title">Good matches start with the whole picture.</h2>
             <p>
               Move past one-size-fits-all filters. Search the context around a match, then see what
@@ -153,12 +149,11 @@ export function LandingPage() {
             </p>
           </div>
           <div className="lp-spec">
-            <article className="lp-card" aria-labelledby="lp-spec-creators">
-              <p className="lp-eyebrow">Creator matching</p>
+            <article className="lp-offer" aria-labelledby="lp-spec-creators">
               <h3 id="lp-spec-creators">Find creators who feel right for your brand.</h3>
-              <p className="lp-card-copy">Match on content, audience, reach, and campaign intent, not follower count alone.</p>
-              <CreatorVisual />
-              <dl>
+              <p className="lp-offer-copy">Match on content, audience, reach, and campaign intent, not follower count alone.</p>
+              <CreatorSample />
+              <dl className="lp-facets">
                 <div><dt>Content</dt><dd>What the creator posts about</dd></div>
                 <div><dt>Audience</dt><dd>Who follows them</dd></div>
                 <div><dt>Reach</dt><dd>How far their posts travel</dd></div>
@@ -166,12 +161,11 @@ export function LandingPage() {
               </dl>
               <Link className="lp-link" to="/signup">Start a creator search</Link>
             </article>
-            <article className="lp-card" aria-labelledby="lp-spec-companies">
-              <p className="lp-eyebrow">Company matching</p>
+            <article className="lp-offer" aria-labelledby="lp-spec-companies">
               <h3 id="lp-spec-companies">Find emerging companies that fit your ICP.</h3>
-              <p className="lp-card-copy">Surface companies by what they do, their stage, their size, and the needs they signal.</p>
-              <CompanyVisual />
-              <dl>
+              <p className="lp-offer-copy">Surface companies by what they do, their stage, their size, and the needs they signal.</p>
+              <CompanySample />
+              <dl className="lp-facets">
                 <div><dt>What they do</dt><dd>The product and the market</dd></div>
                 <div><dt>Stage</dt><dd>How far along they are</dd></div>
                 <div><dt>Size</dt><dd>Team headcount</dd></div>
@@ -184,9 +178,8 @@ export function LandingPage() {
       </section>
 
       <section className="lp-method" id="method" aria-labelledby="lp-method-title">
-        <div className="lp-wrap lp-grid">
+        <div className="lp-wrap lp-method-grid">
           <div className="lp-method-intro">
-            <p className="lp-eyebrow">How it works</p>
             <h2 id="lp-method-title">Go from idea to action.</h2>
             <p>Keep the search lightweight and the reasoning visible, so your team can move with confidence.</p>
             <Link className="lp-button lp-button--outline" to="/signup">Start with a brief</Link>
@@ -194,7 +187,7 @@ export function LandingPage() {
           <ol className="lp-steps">
             {steps.map((step, i) => (
               <li className="lp-step" key={step.title}>
-                <span className="lp-step-num" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+                <span className="lp-step-num" aria-hidden="true">{i + 1}</span>
                 <div>
                   <h3>{step.title}</h3>
                   <p>{step.copy}</p>
@@ -205,19 +198,16 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="lp-wrap lp-cta" aria-labelledby="lp-cta-title">
-        <div className="lp-cta-panel">
-          <p className="lp-eyebrow">Ready</p>
+      <section className="lp-cta" aria-labelledby="lp-cta-title">
+        <div className="lp-wrap lp-cta-inner">
           <h2 id="lp-cta-title">Set a brief.</h2>
-          <p className="lp-cta-copy">Describe the fit in plain language and review a ranked shortlist with the reasons attached.</p>
-          <ul className="lp-stages" aria-label="What happens next">
-            <li>Describe</li>
-            <li>Rank</li>
-            <li>Compare</li>
-            <li>Export</li>
-          </ul>
-          <Link className="lp-button" to="/signup">Create your workspace</Link>
-          <span className="lp-cta-login">Already have an account? <Link className="lp-link" to="/login">Sign in</Link></span>
+          <div className="lp-cta-body">
+            <p>Describe the fit in plain language and review a ranked shortlist with the reasons attached.</p>
+            <div className="lp-actions">
+              <Link className="lp-button" to="/signup">Create your workspace</Link>
+            </div>
+            <p className="lp-cta-login">Already have an account? <Link className="lp-link" to="/login">Sign in</Link></p>
+          </div>
         </div>
       </section>
 
@@ -255,16 +245,11 @@ function ProductPreview() {
 
   return (
     <div className="lp-preview">
+      <div className="lp-frame">
       <div className="lp-window" role="group" aria-label="Sample preview of Spark’s matching workspace">
-        <div className="lp-chrome">
-          <div className="lp-chrome-dots" aria-hidden="true"><i /><i /><i /></div>
-          <div className="lp-chrome-address">app.spark.match/{active}/search</div>
-          <span className="lp-chrome-spacer" aria-hidden="true" />
-        </div>
-
         <div className="lp-app-head">
           <div className="lp-app-brand">
-            <img src="/logo-mark.png" alt="" width={26} height={26} />
+            <img src="/logo-mark.png" alt="" width={24} height={24} />
             <b>Spark</b>
           </div>
           <div className="lp-seg" role="tablist" aria-label="Sample searches">
@@ -295,21 +280,20 @@ function ProductPreview() {
 
         <div id="lp-panel" role="tabpanel" aria-labelledby={`lp-tab-${active}`} key={active}>
           <div className="lp-app-title">
-            <p className="lp-eyebrow">New match</p>
             <strong>Search</strong>
             <span>{current.subtitle}</span>
           </div>
 
           <div className="lp-app-body">
             <div className="lp-app-brief">
-              <p className="lp-eyebrow">Brief</p>
+              <p className="lp-label">Brief</p>
               <p className="lp-field-label">{current.question}</p>
               <div className="lp-textarea">
                 {current.brief.map((segment, i) =>
                   typeof segment === "string" ? (
                     <Fragment key={i}>{segment}</Fragment>
                   ) : (
-                    <mark className="lp-mark" key={i} style={delayStyle(0.3 + segment.n * 0.4)}>{segment.text}</mark>
+                    <mark className="lp-mark" key={i} style={delayStyle(0.2 + segment.n * 0.3)}>{segment.text}</mark>
                   ),
                 )}
               </div>
@@ -323,82 +307,86 @@ function ProductPreview() {
 
             <div className="lp-app-results">
               <div className="lp-results-head">
-                <p className="lp-eyebrow">Shortlist</p>
+                <p className="lp-label">Shortlist</p>
                 <span className="lp-sort">Best fit</span>
               </div>
-              {current.results.map((result, i) => (
-                <div className="lp-result" key={result.name}>
-                  <div className={i === 0 ? "lp-avatar lp-avatar--lg" : "lp-avatar lp-avatar--lg lp-avatar--tint"}>{result.initials}</div>
-                  <div className="lp-result-info">
-                    <b>{result.name}</b>
-                    <span className="lp-result-meta">
-                      <span>{result.handle}</span>
-                      <span className="lp-result-cat">{result.category}</span>
-                    </span>
-                    <span className="lp-bar"><i style={{ width: `${result.score}%`, ...delayStyle(0.5 + i * 0.2) }} /></span>
+              <div className="lp-results">
+                {current.results.map((result, i) => (
+                  <div className="lp-result" key={result.name}>
+                    <div className="lp-avatar lp-avatar--lg">{result.initials}</div>
+                    <div className="lp-result-info">
+                      <b>{result.name}</b>
+                      <span className="lp-result-meta">
+                        <span>{result.handle}</span>
+                        <span>{result.category}</span>
+                      </span>
+                      <span className="lp-bar"><i style={{ width: `${result.score}%`, ...delayStyle(1.3 + i * 0.15) }} /></span>
+                    </div>
+                    <div className="lp-result-score"><strong>{result.score}</strong><span>fit</span></div>
                   </div>
-                  <div className="lp-result-score"><strong>{result.score}</strong><span>fit</span></div>
-                </div>
-              ))}
+                ))}
+              </div>
               <div className="lp-app-bottom">
-                <span><i aria-hidden="true" />{current.reasons}</span>
+                <span>{current.reasons}</span>
                 <span className="lp-app-bottom-action">Compare shortlist</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <div className="lp-float-note">
-        <span className="lp-float-check" aria-hidden="true">✓</span>
-        <span><strong>Why it fits</strong><small>Evidence alongside every match</small></span>
       </div>
-      <p className="lp-preview-caption"><span className="lp-dot" aria-hidden="true" />Product preview, sample data</p>
+      <p className="lp-preview-caption">Product preview with sample data.</p>
     </div>
   );
 }
 
-function CreatorVisual() {
+function CreatorSample() {
   return (
-    <div className="lp-visual" aria-hidden="true">
-      <div className="lp-visual-head"><span>Creator fit</span><span className="lp-sample-tag"><i />Sample</span></div>
-      <div className="lp-visual-profile">
-        <div className="lp-avatar lp-avatar--lg">JM</div>
-        <div><b>Jules Martin</b><small>Beauty and skincare</small></div>
-        <strong className="lp-visual-score">92<small>fit</small></strong>
+    <figure className="lp-sample">
+      <figcaption>Example match, sample data</figcaption>
+      <div className="lp-sample-head">
+        <span className="lp-avatar lp-avatar--lg">JM</span>
+        <div><b>Jules Martin</b><span>Beauty and skincare</span></div>
+        <strong className="lp-sample-score">92<small>fit</small></strong>
       </div>
-      <div className="lp-stats">
-        <div><small>Average reach</small><b>18.4k</b></div>
-        <div><small>Engagement</small><b>4.8%</b></div>
-        <div><small>Audience</small><b>18–34</b></div>
+      <dl className="lp-sample-facts">
+        <div><dt>Average reach</dt><dd>18.4k</dd></div>
+        <div><dt>Engagement</dt><dd>4.8%</dd></div>
+        <div><dt>Audience</dt><dd>18–34</dd></div>
+      </dl>
+      <div className="lp-sample-reason">
+        <b>Why it matches</b>
+        <ul>
+          <li>Skincare education across recent posts</li>
+          <li>Content for sensitive skin</li>
+          <li>Audience aged 18–34</li>
+        </ul>
       </div>
-      <div className="lp-reason">
-        <span>✳</span>
-        <p><b>Strong content fit</b>Skincare education appears throughout the creator’s profile.</p>
-      </div>
-    </div>
+    </figure>
   );
 }
 
-function CompanyVisual() {
+function CompanySample() {
   return (
-    <div className="lp-visual" aria-hidden="true">
-      <div className="lp-visual-head"><span>Company fit</span><span className="lp-sample-tag"><i />Sample</span></div>
-      <div className="lp-visual-profile">
-        <div className="lp-company-mark">N</div>
-        <div><b>Northstar Labs</b><small>Supply chain software</small></div>
-        <span className="lp-stage">Series A</span>
+    <figure className="lp-sample">
+      <figcaption>Example match, sample data</figcaption>
+      <div className="lp-sample-head">
+        <span className="lp-avatar lp-avatar--lg">NL</span>
+        <div><b>Northstar Labs</b><span>Supply chain software</span></div>
+        <span className="lp-sample-stage">Series A</span>
       </div>
-      <div className="lp-visual-title">Why it matches</div>
-      <ul className="lp-signals">
-        <li><i>✓</i>Growing logistics team</li>
-        <li><i>✓</i>Hiring across operations</li>
-        <li><i>✓</i>Expanding into new markets</li>
-      </ul>
-      <div className="lp-visual-foot">
-        <span>Team size <b>51–200</b></span>
-        <span>Growth <b>↑ Rising</b></span>
+      <dl className="lp-sample-facts">
+        <div><dt>Team size</dt><dd>51–200</dd></div>
+        <div><dt>Growth</dt><dd>Rising</dd></div>
+      </dl>
+      <div className="lp-sample-reason">
+        <b>Why it matches</b>
+        <ul>
+          <li>Growing logistics team</li>
+          <li>Hiring across operations</li>
+          <li>Expanding into new markets</li>
+        </ul>
       </div>
-    </div>
+    </figure>
   );
 }

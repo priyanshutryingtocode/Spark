@@ -93,7 +93,7 @@
   /* Two families: the reader's UI sans for text, and a mono for every figure.
      Numerals stay mono because the summary strip, the result metrics and the
      rank column all rely on tabular figures lining up. */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Segoe UI", "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 
   /* Motion. The file had exactly one transition declaration and three

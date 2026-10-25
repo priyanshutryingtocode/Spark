@@ -52,7 +52,7 @@ export function HistoryPage() {
 
   async function deleteRun(runId: string) {
     if (deletingId) return;
-    if (!window.confirm("Delete this saved shortlist?")) return;
+    if (!window.confirm("Delete this match run? Saved matches from it will remain in your shortlist.")) return;
     setDeletingId(runId);
     try {
       // `remove` re-throws after recording the message in the shared error slot,
@@ -78,9 +78,9 @@ export function HistoryPage() {
   return (
     <section className="page-section">
       <PageIntro
-        eyebrow="History / Archive"
-        title="Saved shortlists"
-        description={`A durable record of the briefs you have run and the ${panel.plural} you kept.`}
+        eyebrow="Workspace / History"
+        title="Past searches"
+        description={`Review previous briefs and the ${panel.plural} returned for each match run.`}
         meta={(
           <button className="btn btn-secondary" type="button" disabled={isLoading} onClick={() => void refresh()}>
             {isLoading ? "Refreshing..." : "Refresh"}
@@ -95,13 +95,13 @@ export function HistoryPage() {
       <div className="history-layout">
         <aside className="history-ledger">
           <div className="ledger-heading">
-            <span>Saved runs</span>
+            <span>Match runs</span>
             {/* The count of what is loaded, with a "+" when older runs are
                 still behind "Load older runs". */}
             <span>{items.length}{hasMore ? "+" : ""}</span>
           </div>
           <div className="history-list">
-            {!isLoading && !items.length && <div className="empty-ledger"><p>No saved shortlists yet.</p><Link to={panelPath(kind)}>Run a match <Icon name="arrow-right" size={13} /></Link></div>}
+            {!isLoading && !items.length && <div className="empty-ledger"><p>No past searches yet.</p><Link to={panelPath(kind)}>Run a match <Icon name="arrow-right" size={13} /></Link></div>}
             {items.map((item) => (
               <article className={`history-row ${selected?.run_id === item.run_id ? "history-row-active" : ""}`} key={item.run_id}>
                 <button className="history-open" type="button" aria-current={openRunId === item.run_id ? "true" : undefined} onClick={() => setOpenRunId(item.run_id)}>

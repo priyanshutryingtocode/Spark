@@ -16,4 +16,5 @@
 @import "./styles/history.css" layer(components);
 @import "./styles/compare.css" layer(components);
 @import "./styles/responsive.css" layer(components);
+@import "./styles/visual-system.css" layer(components);
 @import "./styles/utilities.css" layer(utilities);

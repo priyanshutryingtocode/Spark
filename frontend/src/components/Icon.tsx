@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 export type IconName =
   | "search"
   | "history"
+  | "bookmark"
   | "compare"
   | "swap"
   | "arrow-right"
@@ -38,6 +39,7 @@ const MARKS: Record<IconName, ReactNode> = {
       <path d="M12 7.5V12l3.2 2" />
     </>
   ),
+  bookmark: <path d="M6 4.5h12v16l-6-4-6 4z" />,
   compare: (
     /* A panel and an arrow, not two bars: two vertical rectangles read as a
      * pause button, and this mark sits in the navigation beside a page called

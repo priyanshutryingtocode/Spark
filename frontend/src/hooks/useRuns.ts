@@ -3,9 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { CorpusKind, RunListItem } from "../types";
 
-/** `kind` is a parameter, not something read from a context: History is the one
- *  page where showing the other panel's runs is a silent data leak rather than a
- *  visible bug, since both lists are valid run lists. */
+/** Keep history scoped to the active corpus; both lists are otherwise valid. */
 export function useRuns(kind: CorpusKind) {
   const [items, setItems] = useState<RunListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -45,14 +43,16 @@ export function useRuns(kind: CorpusKind) {
     }
   }, [kind]);
 
+  const cancelLoad = useCallback(() => {
+    ++requestId.current;
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+  }, []);
+
   useEffect(() => {
     void load();
-    return () => {
-      ++requestId.current;
-      activeRequest.current?.abort();
-      activeRequest.current = null;
-    };
-  }, [load]);
+    return cancelLoad;
+  }, [cancelLoad, load]);
 
   const remove = useCallback(async (runId: string) => {
     try {

@@ -4,11 +4,6 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { PAGES, PANELS, pageFromPath, panelPath, useCorpus } from "../panels";
 import { AccountMenu } from "./AccountMenu";
-import { BackendStatus } from "./BackendStatus";
-import { Icon } from "./Icon";
-
-/** The nav's three pages, each with its mark. */
-const NAV_ICONS = { search: "search", history: "history", compare: "compare" } as const;
 
 export function Layout() {
   const { user, signOut, isConfigured } = useAuth();
@@ -88,20 +83,18 @@ export function Layout() {
               );
             })}
           </div>
-          <nav className="main-nav" aria-label="Primary navigation">
+          <nav className="main-nav" aria-label="Primary navigation" data-active={pageFromPath(location.pathname)}>
             {PAGES.map((page) => (
               <NavLink
                 key={page.slug}
                 to={panelPath(kind, page.slug)}
                 className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
               >
-                <Icon name={NAV_ICONS[page.slug]} size={14} />
                 {page.label}
               </NavLink>
             ))}
           </nav>
           <div className="account-slot">
-            <BackendStatus />
             {isConfigured && user && <AccountMenu user={user} signOut={signOut} />}
           </div>
         </div>

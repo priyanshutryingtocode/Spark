@@ -1,6 +1,7 @@
 import type { Brief, ProspectSnapshot, RankedEntry } from "../types";
 import {
   GroundingList,
+  CandidateAvatar,
   Metric,
   ProportionBar,
   ResultFit,
@@ -11,12 +12,14 @@ import {
 import type { CardVariant } from "./resultShared";
 
 export function CompanyResultCard({
-  company, entry, brief, highlight = false, variant = "full",
+  company, entry, brief, highlight = false, selected = false, onSelect, variant = "full",
 }: {
   company: ProspectSnapshot;
   entry: RankedEntry;
   brief: Brief;
   highlight?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
   variant?: CardVariant;
 }) {
   // No platform facet: a company is not on TikTok and the server does not filter
@@ -29,16 +32,19 @@ export function CompanyResultCard({
 
   return (
     <article
-      className={["result-row", compact && "result-row-compact", highlight && "result-row-highlight"].filter(Boolean).join(" ")}
+      className={["result-row", compact && "result-row-compact", highlight && "result-row-highlight", selected && "result-row-selected"].filter(Boolean).join(" ")}
       aria-label={`Match ${entry.rank} for ${brief.goal}`}
     >
       <ResultRank rank={entry.rank} />
       <div className="result-identity">
         <div className="result-identity-heading">
-          <h3>{company.name}</h3>
-          {company.funding_stage && (
-            <span className="result-display-name">{company.funding_stage}</span>
-          )}
+          <CandidateAvatar name={company.name} kind="prospect" />
+          <div className="result-title-stack">
+            <h3>{company.name}</h3>
+            {company.funding_stage && (
+              <span className="result-display-name">{company.funding_stage}</span>
+            )}
+          </div>
         </div>
         {/* Two lines in the compact variant, so the two columns' rows line up.
             See the creator card for why the filter reasons share the meta line
@@ -105,6 +111,16 @@ export function CompanyResultCard({
           </>
         )}
       </ResultRationale>
+      {onSelect && (
+        <button
+          className="result-detail-trigger"
+          type="button"
+          aria-pressed={selected}
+          onClick={onSelect}
+        >
+          {selected ? "Profile open" : "View profile"}
+        </button>
+      )}
     </article>
   );
 }

@@ -40,9 +40,10 @@ const SLUG_TO_KIND: Record<string, CorpusKind> = {
   companies: "prospect",
 };
 
-/** The three sub-pages, in nav order. Shared by the router and the nav. */
+/** Workspace pages, in nav order. Shared by the router and navigation. */
 export const PAGES = [
   { slug: "search", label: "Search" },
+  { slug: "saved", label: "Saved" },
   { slug: "history", label: "History" },
   { slug: "compare", label: "Compare" },
 ] as const;
