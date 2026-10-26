@@ -168,6 +168,7 @@ function SavedMatchColumn({ label, item, titleId }: { label: string; item: Saved
       <p className="compare-brief">{item.brief.goal}</p>
       <MatchDetailsPanel
         kind={item.kind}
+        dataset={item.dataset ?? "synthetic"}
         candidate={item.candidate}
         entry={item.ranked}
         titleId={titleId}

@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
-import type { CreatorSnapshot, CorpusKind, MatchRating, ProspectSnapshot, RankedEntry } from "../types";
+import type { CreatorSnapshot, CorpusKind, DatasetMode, MatchRating, ProspectSnapshot, RankedEntry } from "../types";
 import { MatchDetailsPanel } from "./MatchDetailsPanel";
 
 export function MatchDetailsDialog({
   kind,
+  dataset = "synthetic",
   candidate,
   entry,
   saved,
@@ -17,6 +18,7 @@ export function MatchDetailsDialog({
   onClose,
 }: {
   kind: CorpusKind;
+  dataset?: DatasetMode;
   candidate: CreatorSnapshot | ProspectSnapshot;
   entry: RankedEntry;
   saved: boolean;
@@ -70,6 +72,7 @@ export function MatchDetailsDialog({
       </div>
       <MatchDetailsPanel
         kind={kind}
+        dataset={dataset}
         candidate={candidate}
         entry={entry}
         saved={saved}

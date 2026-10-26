@@ -208,10 +208,10 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ run_id: runId, candidate_id: candidateId, rating, reason }),
   }, options),
-  findLookalikes: (kind: CorpusKind, candidateId: number, options?: RequestOptions) =>
+  findLookalikes: (kind: CorpusKind, candidateId: number, dataset: DatasetMode = "synthetic", options?: RequestOptions) =>
     request<LookalikeResponse>("/api/v1/lookalikes", {
       method: "POST",
-      body: JSON.stringify({ kind, candidate_id: candidateId, top_k: 5 }),
+      body: JSON.stringify({ kind, dataset, candidate_id: candidateId, top_k: 5 }),
     }, options),
   compareRuns: (runIdA: string, runIdB: string, options?: RequestOptions) =>
     request<Comparison>("/api/v1/comparisons", {

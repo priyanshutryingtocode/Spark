@@ -403,6 +403,7 @@ export function SearchPage() {
                 {selectedEntry && selectedCandidate && (
                   <MatchDetailsDialog
                     kind={runDetail.kind}
+                    dataset={runDetail.dataset ?? "synthetic"}
                     candidate={selectedCandidate}
                     entry={selectedEntry}
                     saved={savedMatches.data?.items.some((item) =>

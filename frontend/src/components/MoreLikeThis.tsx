@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import { CandidateAvatar, formatCount } from "./resultShared";
-import type { CorpusKind, CreatorSnapshot, LookalikeResponse, ProspectSnapshot } from "../types";
+import type { CorpusKind, CreatorSnapshot, DatasetMode, LookalikeResponse, ProspectSnapshot } from "../types";
 
-export function MoreLikeThis({ kind, candidateId }: { kind: CorpusKind; candidateId: number }) {
+export function MoreLikeThis({
+  kind,
+  candidateId,
+  dataset = "synthetic",
+}: { kind: CorpusKind; candidateId: number; dataset?: DatasetMode }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LookalikeResponse | null>(null);
@@ -16,7 +20,7 @@ export function MoreLikeThis({ kind, candidateId }: { kind: CorpusKind; candidat
     setLoading(true);
     setError(null);
     try {
-      setResult(await api.findLookalikes(kind, candidateId));
+      setResult(await api.findLookalikes(kind, candidateId, dataset));
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Could not find similar profiles.");
     } finally {

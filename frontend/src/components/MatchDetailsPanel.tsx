@@ -1,4 +1,4 @@
-import type { CreatorSnapshot, CorpusKind, MatchRating, ProspectSnapshot, RankedEntry } from "../types";
+import type { CreatorSnapshot, CorpusKind, DatasetMode, MatchRating, ProspectSnapshot, RankedEntry } from "../types";
 import { CandidateAvatar, GroundingList, formatCount } from "./resultShared";
 import { MoreLikeThis } from "./MoreLikeThis";
 
@@ -18,6 +18,7 @@ const sourceLabel = {
 
 export function MatchDetailsPanel({
   kind,
+  dataset = "synthetic",
   candidate,
   entry,
   saved = false,
@@ -31,6 +32,7 @@ export function MatchDetailsPanel({
   titleId = "match-details-title",
 }: {
   kind: CorpusKind;
+  dataset?: DatasetMode;
   candidate: CreatorSnapshot | ProspectSnapshot;
   entry: RankedEntry;
   saved?: boolean;
@@ -147,7 +149,7 @@ export function MatchDetailsPanel({
         <p className="match-details-caption">Similarity compares profile text with your brief; it is not a fit score.</p>
       </section>
 
-      <MoreLikeThis key={`${kind}:${candidate.id}`} kind={kind} candidateId={candidate.id} />
+      <MoreLikeThis key={`${kind}:${dataset}:${candidate.id}`} kind={kind} candidateId={candidate.id} dataset={dataset} />
 
       {entry.grounding.length > 0 && (
         <section className="match-details-section">

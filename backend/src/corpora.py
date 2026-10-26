@@ -852,7 +852,3 @@ def kind_for_record(record: Mapping[str, Any]) -> str:
     if kind not in KINDS:
         raise KeyError(f"run has unknown corpus kind {kind!r}; known: {sorted(KINDS)}")
     return kind
-
-
-def corpus_for_record(record: Mapping[str, Any]) -> Corpus:
-    return get_corpus(kind_for_record(record), dataset_for_record(record))

@@ -203,11 +203,14 @@ class PostgresRunRepository:
             )
             row = conn.execute(
                 """
-                SELECT id, run_id, kind, brief, candidate, ranked, status, note,
-                       source_created_at, created_at, updated_at
-                FROM saved_matches
-                WHERE owner_id IS NOT DISTINCT FROM %s
-                  AND run_id = %s AND candidate_id = %s
+                SELECT saved.id, saved.run_id, saved.kind, saved.brief, saved.candidate,
+                       saved.ranked, saved.status, saved.note, saved.source_created_at,
+                       saved.created_at, saved.updated_at,
+                       COALESCE(source_run.summary->>'dataset', 'synthetic')
+                FROM saved_matches AS saved
+                JOIN match_runs AS source_run ON source_run.id = saved.run_id
+                WHERE saved.owner_id IS NOT DISTINCT FROM %s
+                  AND saved.run_id = %s AND saved.candidate_id = %s
                 """,
                 (owner, run_id, candidate_id),
             ).fetchone()
@@ -215,19 +218,22 @@ class PostgresRunRepository:
 
     def list_saved_matches(self, owner_id=None, kind: str | None = None) -> list[dict]:
         owner = _as_uuid(owner_id)
-        where = ["owner_id IS NOT DISTINCT FROM %s"]
+        where = ["saved.owner_id IS NOT DISTINCT FROM %s"]
         params: list[Any] = [owner]
         if kind is not None:
-            where.append("kind = %s")
+            where.append("saved.kind = %s")
             params.append(kind)
         with self._connection_factory() as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, run_id, kind, brief, candidate, ranked, status, note,
-                       source_created_at, created_at, updated_at
-                FROM saved_matches
+                SELECT saved.id, saved.run_id, saved.kind, saved.brief, saved.candidate,
+                       saved.ranked, saved.status, saved.note, saved.source_created_at,
+                       saved.created_at, saved.updated_at,
+                       COALESCE(source_run.summary->>'dataset', 'synthetic')
+                FROM saved_matches AS saved
+                JOIN match_runs AS source_run ON source_run.id = saved.run_id
                 WHERE {' AND '.join(where)}
-                ORDER BY created_at DESC, id DESC
+                ORDER BY saved.created_at DESC, saved.id DESC
                 """,
                 params,
             ).fetchall()
@@ -238,13 +244,20 @@ class PostgresRunRepository:
         with self._connection_factory() as conn:
             row = conn.execute(
                 """
-                UPDATE saved_matches
-                SET status = COALESCE(%s, status),
-                    note = COALESCE(%s, note),
-                    updated_at = NOW()
-                WHERE id = %s AND owner_id IS NOT DISTINCT FROM %s
-                RETURNING id, run_id, kind, brief, candidate, ranked, status, note,
-                          source_created_at, created_at, updated_at
+                WITH updated AS (
+                    UPDATE saved_matches
+                    SET status = COALESCE(%s, status),
+                        note = COALESCE(%s, note),
+                        updated_at = NOW()
+                    WHERE id = %s AND owner_id IS NOT DISTINCT FROM %s
+                    RETURNING *
+                )
+                SELECT updated.id, updated.run_id, updated.kind, updated.brief,
+                       updated.candidate, updated.ranked, updated.status, updated.note,
+                       updated.source_created_at, updated.created_at, updated.updated_at,
+                       COALESCE(source_run.summary->>'dataset', 'synthetic')
+                FROM updated
+                JOIN match_runs AS source_run ON source_run.id = updated.run_id
                 """,
                 (status, note, _as_uuid(saved_id), owner),
             ).fetchone()
@@ -329,6 +342,7 @@ def _saved_match_from_row(row) -> dict:
         "source_created_at": row[8],
         "created_at": row[9],
         "updated_at": row[10],
+        "dataset": row[11],
     }
 
 

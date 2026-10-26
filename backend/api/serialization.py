@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from src import config
 from src.formatting import match_evidence
 from src.corpora import CREATORS, Corpus, Influencer, Prospect, dataset_for_record, get_corpus, kind_for_record
 from src.models import Brief
@@ -337,6 +338,7 @@ def saved_match_response(record: dict) -> dict:
         saved_id=record["id"],
         run_id=record["run_id"],
         kind=record["kind"],
+        dataset=record.get("dataset") or config.DATASET_MODE,
         brief=record["brief"],
         candidate=record["candidate"],
         ranked=record["ranked"],

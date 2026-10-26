@@ -337,6 +337,7 @@ class SavedMatchResponse(BaseModel):
     saved_id: UUID
     run_id: UUID
     kind: CorpusKind
+    dataset: DatasetMode = config.DATASET_MODE
     brief: BriefPayload
     candidate: dict[str, Any]
     ranked: dict[str, Any]
@@ -380,12 +381,14 @@ class MatchFeedbackResponse(BaseModel):
 
 class LookalikeRequest(BaseModel):
     kind: CorpusKind
+    dataset: DatasetMode = config.DATASET_MODE
     candidate_id: int = Field(ge=0)
     top_k: int = Field(default=5, ge=1, le=10)
 
 
 class LookalikeResponse(BaseModel):
     kind: CorpusKind
+    dataset: DatasetMode = config.DATASET_MODE
     source_id: int
     candidates: list[dict[str, Any]]
 

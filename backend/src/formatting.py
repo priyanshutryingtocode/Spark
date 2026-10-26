@@ -8,7 +8,9 @@ from .models import Brief
 from .text_match import shared_terms, terms
 
 
-def format_followers(n: int) -> str:
+def format_followers(n: int | None) -> str:
+    if n is None:
+        return "—"
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}M"
     if n >= 1_000:
@@ -74,8 +76,9 @@ def print_results(
             print(f"{i}. {fit_tag}{cand.name}  ({cand.industry}, {place})")
             print(f"   {format_followers(cand.headcount)} employees")
         else:
+            engagement = f"{cand.engagement:.1f}%" if cand.engagement is not None else "—"
             print(f"{i}. {fit_tag}{cand.handle}  ({cand.platform}, {cand.city})")
-            print(f"   {format_followers(cand.followers)} followers · {cand.engagement}% engagement")
+            print(f"   {format_followers(cand.followers)} followers · {engagement} engagement")
         if cand.similarity is not None:
             print(f"   Semantic relevance: {cand.similarity:.1%}")
         print(f"   Evidence: {'; '.join(match_evidence(brief, cand))}")

@@ -208,6 +208,7 @@ export interface SavedMatch {
   saved_id: string;
   run_id: string;
   kind: CorpusKind;
+  dataset?: DatasetMode;
   brief: Brief;
   candidate: CreatorSnapshot | ProspectSnapshot;
   ranked: RankedEntry;
@@ -232,6 +233,7 @@ export interface MatchFeedback {
 
 export interface LookalikeResponse {
   kind: CorpusKind;
+  dataset?: DatasetMode;
   source_id: number;
   candidates: Array<CreatorSnapshot | ProspectSnapshot>;
 }

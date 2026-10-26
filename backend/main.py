@@ -21,7 +21,7 @@ from src.embeddings import EmbeddingCache, index_records, text_key
 from src.formatting import print_brief, print_results
 from src.gemini_client import DailyQuotaExhausted, get_client
 from src.match_service import rank_match, retrieve_for_run
-from src.corpora import KINDS, get_corpus
+from src.corpora import SYNTHETIC_KINDS, get_corpus
 from src.models import Brief
 from src.retrieval import rerank_candidates
 
@@ -103,7 +103,7 @@ def parse_args() -> argparse.Namespace:
         help="Ignore any cached vectors and re-embed every record.",
     )
     parser.add_argument(
-        "--kind", choices=sorted(KINDS), default="creator",
+        "--kind", choices=sorted(SYNTHETIC_KINDS), default="creator",
         help="Which corpus to generate and index. Prospects are indexing-only: "
              "ranking them arrives with their own rubric, and asking for a match "
              "here is refused rather than answered with creator rules.",
@@ -117,7 +117,7 @@ def parse_args() -> argparse.Namespace:
     # with no rubric of its own would otherwise reach another corpus's rules and
     # print confident nonsense about records it was never asked about.
     if args.kind != "creator" and not (args.index_only or args.limit):
-        if get_corpus(args.kind).rubric is None:
+        if get_corpus(args.kind, "synthetic").rubric is None:
             parser.error(
                 f"--kind {args.kind} can generate and index only. Ranking a "
                 f"{args.kind} needs its own rubric, which this corpus does not "
@@ -159,7 +159,7 @@ def ensure_indexed(args) -> None:
     write -- if anything fails partway (bad key, network, quota), nothing
     here has touched the database yet, so existing indexed data survives.
     """
-    corpus = get_corpus(args.kind)
+    corpus = get_corpus(args.kind, "synthetic")
 
     # `--limit` is the only flag that can suppress a write, so it is checked on
     # its own.
@@ -276,7 +276,7 @@ def main() -> None:
     # The corpus the brief is answered against. `--kind` has always named the
     # corpus to build; it now also names the corpus to search, so a company
     # match from the command line searches companies.
-    corpus = get_corpus(args.kind)
+    corpus = get_corpus(args.kind, "synthetic")
     brief = Brief(
         goal=args.goal,
         # A corpus with no platform facet ignores the platform entirely, so

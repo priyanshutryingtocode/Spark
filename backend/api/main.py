@@ -35,13 +35,18 @@ from api.schemas.models import (
     SavedMatchResponse,
     SavedMatchUpdateRequest,
 )
-from api.serialization import run_detail, run_list_item, saved_match_response
+from api.serialization import (
+    creator_to_snapshot,
+    prospect_to_snapshot,
+    run_detail,
+    run_list_item,
+    saved_match_response,
+)
 from api.services.compare_service import compare_runs
 from api.services.csv_export import build_csv
 from src import config, vector_store
 from src.corpora import ALL_KINDS, DEFAULT_KIND, KINDS, dataset_for_record, get_corpus, kind_for_record
 from src.platforms import PLATFORMS
-from api.serialization import creator_to_snapshot, prospect_to_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +180,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
 
@@ -459,8 +464,9 @@ def create_app(
     @application.post("/api/v1/lookalikes", response_model=LookalikeResponse)
     def find_lookalikes(payload: LookalikeRequest, request: Request):
         current_user_id(request)
-        corpus = get_corpus(payload.kind)
-        _require_ready(request, corpus.kind)
+        corpus = get_corpus(payload.kind, payload.dataset)
+        _refresh_index_state(request)
+        _require_ready(request, corpus.kind, payload.dataset)
         with vector_store.get_connection() as conn:
             candidates = vector_store.search_similar_to_record(
                 conn,
@@ -473,6 +479,7 @@ def create_app(
         serialize = creator_to_snapshot if corpus.kind == "creator" else prospect_to_snapshot
         return {
             "kind": corpus.kind,
+            "dataset": payload.dataset,
             "source_id": payload.candidate_id,
             "candidates": [serialize(candidate) for candidate in candidates],
         }

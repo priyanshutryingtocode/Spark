@@ -155,6 +155,7 @@ export function SavedMatchesPage() {
             <div className="saved-detail-column">
               <MatchDetailsPanel
                 kind={selected.kind}
+                dataset={selected.dataset ?? "synthetic"}
                 candidate={selected.candidate}
                 entry={selected.ranked}
               />
