@@ -15,3 +15,4 @@ backend/reports/*.json
 !backend/reports/evaluation-prospect-*.json
 backend/DATA_MODEL.md
 SPARK_REAL_DATA_IMPLEMENTATION_PLAN.md
+backend/CONTEXT_EVALUATION.md

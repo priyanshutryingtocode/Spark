@@ -30,6 +30,7 @@ def brief_to_payload(brief: Brief) -> dict:
         platform=brief.platform,
         audience=brief.audience,
         vibe=brief.vibe,
+        product_context=brief.product_context,
         audience_age=list(brief.audience_age),
         audience_gender=brief.audience_gender,
         audience_countries=list(brief.audience_countries),

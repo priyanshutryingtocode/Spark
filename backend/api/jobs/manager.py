@@ -152,9 +152,8 @@ class JobManager:
         corpus: Corpus = CREATORS,
     ):
         self._update(job_id, stage="retrieval")
-        # One brief is embedded once for both corpora. `brief.query_text()` omits
-        # the platform on purpose, and for a company brief there is no platform
-        # facet to filter on anyway, so the same vector is valid for both.
+        # User intent and reviewed product context are retrieved separately;
+        # only the explicit brief fields become filters.
         #
         # `retrieve_for_run`, not the strict retriever: it drops the filters one
         # at a time until the corpus has something to say, and reports which it

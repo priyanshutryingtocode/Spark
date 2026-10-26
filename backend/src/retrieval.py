@@ -34,6 +34,10 @@ from .scoring import expand_vertical, filter_hit
 #: records that do not fit. The relaxation exists for the brief that matches
 #: nothing at all, and it reports itself when it happens.
 MIN_FILTERED_RESULTS = 1
+# A modest rank constant lets context-only candidates enter a top-10 shortlist.
+RRF_RANK_CONSTANT = 10
+INTENT_RRF_WEIGHT = 2.0
+CONTEXT_RRF_WEIGHT = 1.0
 
 
 def similarity_sort(candidates: list[Any]) -> list[Any]:
@@ -119,12 +123,64 @@ def hybrid_retrieve(
     return similarity_sort(candidates)[:top_k]
 
 
+def dual_retrieve(
+    conn: psycopg.Connection,
+    brief: Brief,
+    top_k: int = 10,
+    corpus: Corpus = CREATORS,
+    intent_vec=None,
+    context_vec=None,
+    filters: dict[str, Any] | None = None,
+) -> list[Any]:
+    """Fuse intent and reviewed-context retrieval while keeping intent primary."""
+    if intent_vec is None:
+        intent_vec = get_cached_query_vector(brief.intent_query_text())
+    intent = hybrid_retrieve(conn, brief, top_k, corpus, intent_vec, filters)
+    contextual = hybrid_retrieve(conn, brief, top_k, corpus, context_vec, filters)
+    fused: dict[Any, dict[str, Any]] = {}
+
+    for weight, rows, source in (
+        (INTENT_RRF_WEIGHT, intent, "intent"),
+        (CONTEXT_RRF_WEIGHT, contextual, "context"),
+    ):
+        for rank, candidate in enumerate(rows, start=1):
+            item = fused.setdefault(candidate.id, {
+                "candidate": candidate,
+                "score": 0.0,
+                "intent_rank": None,
+                "context_rank": None,
+                "intent_similarity": None,
+            })
+            item["score"] += weight / (RRF_RANK_CONSTANT + rank)
+            item[f"{source}_rank"] = rank
+            if source == "intent":
+                item["intent_similarity"] = candidate.similarity
+
+    max_score = (INTENT_RRF_WEIGHT + CONTEXT_RRF_WEIGHT) / (RRF_RANK_CONSTANT + 1)
+    ranked = sorted(
+        fused.values(),
+        key=lambda item: (
+            -item["score"],
+            item["intent_rank"] or top_k + 1,
+            item["context_rank"] or top_k + 1,
+        ),
+    )[:top_k]
+    candidates = []
+    for item in ranked:
+        candidate = item["candidate"]
+        candidate.similarity = item["intent_similarity"]
+        candidate.retrieval_score = min(1.0, item["score"] / max_score)
+        candidates.append(candidate)
+    return candidates
+
+
 def retrieve_with_filters(
     conn: psycopg.Connection,
     brief: Brief,
     top_k: int = 10,
     corpus: Corpus = CREATORS,
     query_vec=None,
+    context_vec=None,
 ) -> tuple[list[Any], list[str]]:
     """Retrieve, relaxing filters until the result is not empty.
 
@@ -135,8 +191,21 @@ def retrieve_with_filters(
     explanation, not an empty page that looks like a broken search.
     """
     filters = resolve_filters(brief, corpus)
+
+    def search(remaining_filters):
+        if context_vec is None:
+            return hybrid_retrieve(
+                conn, brief, top_k, corpus, query_vec, remaining_filters
+            )
+        return dual_retrieve(
+            conn, brief, top_k, corpus,
+            intent_vec=query_vec, context_vec=context_vec,
+            filters=remaining_filters,
+        )
+
     if not filters:
-        return hybrid_retrieve(conn, brief, top_k, corpus, query_vec, {}), []
+        candidates = search({})
+        return attach_filter_reasons(brief, candidates, corpus), []
 
     order = filter_order(filters, corpus)
     # The filters are relaxed only until the search returns something, and
@@ -145,7 +214,7 @@ def retrieve_with_filters(
     floor = min(top_k, MIN_FILTERED_RESULTS)
     for attempt in range(len(order) + 1):
         remaining = {k: v for k, v in filters.items() if k not in order[:attempt]}
-        candidates = hybrid_retrieve(conn, brief, top_k, corpus, query_vec, remaining)
+        candidates = search(remaining)
         if len(candidates) >= floor or attempt == len(order):
             return attach_filter_reasons(brief, candidates, corpus), order[:attempt]
     return [], order
@@ -205,7 +274,13 @@ def rerank_candidates(
         # getattr, not attribute access: a record that never went through the
         # embedding path has no similarity, and a missing value is a zero rather
         # than a crash in the middle of a run.
-        similarity = getattr(candidate, "similarity", 0.0) or 0.0
+        retrieval_score = getattr(candidate, "retrieval_score", None)
+        # Keep fused rank influence inside the corpus's historical cosine band.
+        similarity = (
+            0.78 + 0.10 * retrieval_score
+            if retrieval_score is not None
+            else (getattr(candidate, "similarity", 0.0) or 0.0)
+        )
         final = similarity + weight * match
         scored.append((final, candidate, reasons))
     scored.sort(key=lambda item: -item[0])

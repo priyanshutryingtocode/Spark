@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
@@ -18,6 +18,37 @@ JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 #: `src.corpora.KINDS` is asserted to cover it in tests.
 CorpusKind = Literal["creator", "prospect"]
 DatasetMode = Literal["synthetic", "real"]
+
+
+ContextItem = Annotated[str, Field(max_length=300)]
+
+
+class ProductContext(BaseModel):
+    category: str = Field(default="", max_length=300)
+    target_audience: str = Field(default="", max_length=500)
+    use_cases: list[ContextItem] = Field(default_factory=list, max_length=8)
+    differentiators: list[ContextItem] = Field(default_factory=list, max_length=8)
+    exclusions: list[ContextItem] = Field(default_factory=list, max_length=8)
+    source_quotes: list[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=5)
+
+
+class ContextExtractionRequest(BaseModel):
+    text: str = Field(min_length=20, max_length=12000)
+    kind: CorpusKind = "creator"
+
+    @model_validator(mode="after")
+    def trim_text(self):
+        self.text = self.text.strip()
+        if len(self.text) < 20:
+            raise ValueError("Text must contain at least 20 non-space characters.")
+        return self
+
+
+class ContextExtractionResponse(BaseModel):
+    relevant: bool
+    message: str = Field(default="", max_length=300)
+    context: ProductContext
+    suggested_filters: dict[str, Any] = Field(default_factory=dict)
 
 
 class BriefPayload(BaseModel):
@@ -37,6 +68,7 @@ class BriefPayload(BaseModel):
     platform: str = Field(default="Any", min_length=1, max_length=50)
     audience: str = Field(default="", max_length=config.AUDIENCE_MAX_LENGTH)
     vibe: str = Field(default="", max_length=config.VIBE_MAX_LENGTH)
+    product_context: ProductContext | None = None
 
     # Structured, optional. The free-text fields above still drive the embedding;
     # these drive the filters and the rerank. Each corpus reads only its own, so
@@ -62,6 +94,7 @@ class BriefPayload(BaseModel):
             platform=self.platform,
             audience=self.audience,
             vibe=self.vibe,
+            product_context=self.product_context.model_dump() if self.product_context else None,
             audience_age=list(self.audience_age),
             audience_gender=self.audience_gender,
             audience_countries=list(self.audience_countries),

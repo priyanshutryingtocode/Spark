@@ -210,6 +210,7 @@ class Influencer:
     source_records: list[CreatorSourceRecord] = field(default_factory=list)
     metric_snapshots: list[CreatorMetricSnapshot] = field(default_factory=list)
     audience_snapshots: list[CreatorAudienceSnapshot] = field(default_factory=list)
+    retrieval_score: float | None = None
 
     def signals(self) -> CreatorSignals:
         """The signal row for this creator, as stored."""
@@ -361,6 +362,7 @@ class Prospect:
     source_provider: str = "synthetic"
     observed_at: datetime | None = None
     confidence: float | None = None
+    retrieval_score: float | None = None
 
     def signals(self) -> ProspectSignals:
         """The signal row for this prospect, as stored."""

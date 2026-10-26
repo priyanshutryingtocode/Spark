@@ -26,6 +26,15 @@ export function RunContext({ run, label, exporting = false, onExport }: RunConte
           {brief.audience && <><span>/</span> {brief.audience}</>}
           {brief.vibe && <><span>/</span> {brief.vibe}</>}
         </p>
+        {brief.product_context?.category && (
+          <details className="run-context-product">
+            <summary>Product context used: {brief.product_context.category}</summary>
+            {brief.product_context.target_audience && <p>Audience: {brief.product_context.target_audience}</p>}
+            {brief.product_context.use_cases.length > 0 && <p>Use cases: {brief.product_context.use_cases.join(", ")}</p>}
+            {brief.product_context.differentiators.length > 0 && <p>Differentiators: {brief.product_context.differentiators.join(", ")}</p>}
+            {brief.product_context.exclusions.length > 0 && <p>Exclusions: {brief.product_context.exclusions.join(", ")}</p>}
+          </details>
+        )}
       </div>
       <button className="btn btn-secondary" type="button" onClick={onExport} disabled={exporting} aria-busy={exporting}>
         <Icon name="download" size={14} />

@@ -23,6 +23,8 @@ from api.schemas.models import (
     DatasetMode,
     MatchJobRequest,
     MatchJobResponse,
+    ContextExtractionRequest,
+    ContextExtractionResponse,
     MatchFeedbackRequest,
     MatchFeedbackResponse,
     LookalikeRequest,
@@ -43,6 +45,7 @@ from api.serialization import (
     saved_match_response,
 )
 from api.services.compare_service import compare_runs
+from api.services.context_extractor import extract_product_context
 from api.services.csv_export import build_csv
 from src import config, vector_store
 from src.corpora import ALL_KINDS, DEFAULT_KIND, KINDS, dataset_for_record, get_corpus, kind_for_record
@@ -97,6 +100,7 @@ def create_app(
         config.MAX_MATCH_JOBS_PER_IP_PER_HOUR,
         window_seconds=3600,
     )
+    context_rate_limiter = SlidingWindowRateLimiter(20, window_seconds=3600)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -307,6 +311,28 @@ def create_app(
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={"code": "MATCH_QUEUE_FULL", "message": "The match queue is full. Try again shortly."},
+            ) from exc
+
+    @application.post(
+        "/api/v1/product-context/extract",
+        response_model=ContextExtractionResponse,
+    )
+    def extract_context(payload: ContextExtractionRequest, request: Request):
+        owner_id = current_user_id(request)
+        try:
+            context_rate_limiter.check(owner_id or _client_ip(request))
+        except RateLimitExceeded as exc:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "CONTEXT_RATE_LIMIT", "message": "The context extraction limit has been reached. Try again later."},
+            ) from exc
+        try:
+            return extract_product_context(payload.text.strip(), payload.kind)
+        except Exception as exc:
+            logger.warning("Product context extraction failed: %s", type(exc).__name__)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"code": "CONTEXT_EXTRACTION_FAILED", "message": "Could not extract product context. Check the text and try again."},
             ) from exc
 
     @application.get("/api/v1/match-jobs/{job_id}", response_model=MatchJobResponse)

@@ -166,6 +166,12 @@ function SavedMatchColumn({ label, item, titleId }: { label: string; item: Saved
         <span>Rank #{String(item.ranked.rank).padStart(2, "0")} · Saved {formatDay(item.created_at)}</span>
       </div>
       <p className="compare-brief">{item.brief.goal}</p>
+      {item.brief.product_context && (
+        <p className="compare-brief">
+          Product context: {item.brief.product_context.category}
+          {item.brief.product_context.target_audience && ` · ${item.brief.product_context.target_audience}`}
+        </p>
+      )}
       <MatchDetailsPanel
         kind={item.kind}
         dataset={item.dataset ?? "synthetic"}

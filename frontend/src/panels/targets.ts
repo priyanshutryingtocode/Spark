@@ -49,8 +49,8 @@ export function parseSizeBand(value: string): [number, number] | null {
 
 /** Which structured fields a corpus shows. */
 export const PANEL_TARGETS: Record<CorpusKind, string[]> = {
-  creator: ["audience_age", "audience_gender", "audience_countries", "min_reach_ratio"],
-  prospect: ["target_industries", "target_size", "target_countries", "budget_band"],
+  creator: ["audience_age", "audience_gender", "audience_countries", "languages", "min_reach_ratio"],
+  prospect: ["target_industries", "target_size", "target_countries", "budget_band", "buyer_roles"],
 };
 
 /** A short, plain description of what a filter will do, for the field's help
@@ -61,6 +61,7 @@ export const TARGET_HELP: Record<CorpusKind, Record<string, string>> = {
     audience_age: "Excludes creators whose audience is outside these bands.",
     audience_gender: "Ranks creators whose audience leans this way. Never excludes.",
     audience_countries: "Excludes creators whose audience is not in these countries.",
+    languages: "Prioritizes creators who publish in these languages.",
     min_reach_ratio: "Ranks creators whose average views reach a share of their followers.",
   },
   prospect: {
@@ -68,5 +69,6 @@ export const TARGET_HELP: Record<CorpusKind, Record<string, string>> = {
     target_size: "Excludes companies outside this size band.",
     target_countries: "Excludes companies outside these countries.",
     budget_band: "Ranks companies by the funding stage that matches this budget.",
+    buyer_roles: "Ranks companies with signals relevant to these buying roles.",
   },
 };

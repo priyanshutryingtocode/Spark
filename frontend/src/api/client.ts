@@ -14,6 +14,7 @@ import type {
   SavedMatchListResponse,
   CorpusKind,
   DatasetMode,
+  ProductContextExtraction,
 } from "../types";
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -173,6 +174,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ brief, params, kind, dataset }),
     }, options),
+  extractProductContext: (text: string, kind: CorpusKind, options?: RequestOptions) =>
+    request<ProductContextExtraction>("/api/v1/product-context/extract", {
+      method: "POST",
+      body: JSON.stringify({ text, kind }),
+    }, { timeoutMs: slowRequestTimeoutMs, ...options }),
   getMatchJob: (jobId: string, options?: RequestOptions) =>
     request<MatchJob>(`/api/v1/match-jobs/${jobId}`, undefined, options),
   listRuns: (kind: CorpusKind, cursor?: string, options?: RequestOptions) => {

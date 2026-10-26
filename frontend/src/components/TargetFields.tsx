@@ -85,6 +85,17 @@ export function TargetFields({
           <p className="target-help">{help.audience_countries}</p>
         </label>
 
+        <label className="brief-field" htmlFor="audience-languages">
+          <span>Content languages <em>optional</em></span>
+          <input
+            id="audience-languages"
+            value={((read(values, "languages") as string[]) ?? []).join(", ")}
+            placeholder="e.g. English, Spanish"
+            onChange={(event) => onChange("languages", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))}
+          />
+          <p className="target-help">{help.languages}</p>
+        </label>
+
         <label className="brief-field" htmlFor="min-reach">
           <span>Minimum reach <em>optional</em></span>
           <input
@@ -128,6 +139,9 @@ export function TargetFields({
           value={sizeBandValue(read(values, "target_size"))}
           onChange={(event) => onChange("target_size", parseSizeBand(event.target.value))}
         >
+          {sizeBandValue(read(values, "target_size")) && !SIZE_BANDS.some((option) => option.value === sizeBandValue(read(values, "target_size"))) && (
+            <option value={sizeBandValue(read(values, "target_size"))}>{sizeBandValue(read(values, "target_size")).replace("-", "–")} staff (custom)</option>
+          )}
           {SIZE_BANDS.map((band) => (
             <option key={band.value} value={band.value}>{band.label}</option>
           ))}
@@ -162,6 +176,17 @@ export function TargetFields({
         </select>
         <p className="target-help">{help.budget_band}</p>
       </label>
+
+      <label className="brief-field" htmlFor="buyer-roles">
+        <span>Buyer roles <em>optional</em></span>
+        <input
+          id="buyer-roles"
+          value={((read(values, "buyer_roles") as string[]) ?? []).join(", ")}
+          placeholder="e.g. operations, finance"
+          onChange={(event) => onChange("buyer_roles", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))}
+        />
+        <p className="target-help">{help.buyer_roles}</p>
+      </label>
     </div>
   );
 }
@@ -169,6 +194,5 @@ export function TargetFields({
 /** The select's value for a stored band, so the control shows what is set. */
 function sizeBandValue(value: unknown): string {
   if (!Array.isArray(value) || value.length !== 2) return "";
-  const band = `${value[0]}-${value[1]}`;
-  return SIZE_BANDS.some((option) => option.value === band) ? band : "";
+  return `${value[0]}-${value[1]}`;
 }

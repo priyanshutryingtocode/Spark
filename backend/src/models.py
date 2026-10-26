@@ -13,10 +13,9 @@ from dataclasses import dataclass, field
 class Brief:
     """A search request.
 
-    The free-text fields are what the user types and what drives the embedding.
-    The structured fields are optional and drive the filters and the rerank
-    instead -- a brief with none of them set still works, because the corpus's
-    own rubric judges the semantic match.
+    The user's free-text fields drive the primary retrieval channel. Reviewed
+    product context is a separate soft retrieval signal; structured targeting
+    fields drive filters and reranking.
 
     Each corpus reads only its own structured fields, so one class serving two
     corpora does not mean one corpus's vocabulary leaking into the other. A
@@ -29,6 +28,7 @@ class Brief:
     platform: str
     audience: str = ""
     vibe: str = ""
+    product_context: dict | None = None
 
     # --- creator brief: who should see this
     audience_age: list[str] = field(default_factory=list)
@@ -46,22 +46,54 @@ class Brief:
     budget_band: str = ""
     buyer_roles: list[str] = field(default_factory=list)
 
-    def query_text(self) -> str:
-        """Text embedded as the retrieval query (the RAG 'query').
+    def intent_query_text(self) -> str:
+        """The user's original search intent, excluding attached product context."""
+        parts = [self.goal.strip()]
+        if self.audience.strip():
+            parts.append(f"Target audience: {self.audience.strip()}.")
+        if self.vibe.strip():
+            parts.append(f"Tone: {self.vibe.strip()}.")
+        return " ".join(parts)
 
-        This is the brand's own words, not a templated scaffold. Platform is
-        omitted because it is already a hard metadata filter, so repeating it
-        here would only dilute the topical signal.
+    def context_query_text(self) -> str:
+        """A bounded retrieval query from reviewed, structured product context."""
+        context = self.product_context or {}
+
+        def clean(value: object, limit: int = 180) -> str:
+            return " ".join(str(value or "").split())[:limit]
+
+        parts = []
+        for key, label in (("category", "Category"), ("target_audience", "Audience")):
+            value = clean(context.get(key, ""))
+            if value:
+                parts.append(f"{label}: {value}")
+        for key, label in (("use_cases", "Use cases"), ("differentiators", "Differentiators")):
+            values = context.get(key, [])
+            if isinstance(values, str):
+                values = [values]
+            if not isinstance(values, (list, tuple)):
+                values = []
+            values = [clean(value, 120) for value in values[:4] if clean(value, 120)]
+            if values:
+                parts.append(f"{label}: {', '.join(values)}")
+        return "Product context. " + ". ".join(parts) if parts else ""
+
+    def query_text(self) -> str:
+        """Combined query retained for callers and single-query comparisons.
+
+        This combines the user's words with reviewed product category and
+        audience. Platform is omitted because it is already a hard filter.
 
         The structured fields are omitted for the same reason, and more strongly:
         "18-24" and "USA" embedded as words are nearly invisible next to a
         paragraph of topical language, and a filter that does not exclude
         anything should not be pretending to be part of the query.
         """
-        parts = [self.goal.strip()]
-        if self.audience.strip():
-            parts.append(f"Target audience: {self.audience.strip()}.")
-        if self.vibe.strip():
-            parts.append(f"Tone: {self.vibe.strip()}.")
+        parts = [self.intent_query_text()]
+        context = self.product_context or {}
+        if context.get("category"):
+            parts.append(f"Product category: {context['category']}.")
+        if context.get("target_audience"):
+            parts.append(f"Product audience: {context['target_audience']}.")
         return " ".join(parts)
 

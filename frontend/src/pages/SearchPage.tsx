@@ -18,7 +18,7 @@ import { WarningBanner } from "../components/WarningBanner";
 import { useMatchJob } from "../hooks/useMatchJob";
 import { Skeleton } from "../components/Skeleton";
 import { useResource } from "../hooks/useResource";
-import type { Brief, CorpusKind, DatasetMode, MatchRating, Meta, RunDetail, SavedMatchListResponse } from "../types";
+import type { Brief, CorpusKind, DatasetMode, MatchRating, Meta, ProductContext, RunDetail, SavedMatchListResponse, SuggestedFilters } from "../types";
 
 const emptyBrief: Brief = {
   goal: "",
@@ -67,6 +67,11 @@ export function SearchPage() {
   const kind = useCorpus();
   const panel = PANELS[kind];
   const [brief, setBrief] = useState<Brief>(emptyBrief);
+  const [productText, setProductText] = useState("");
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const [contextNotice, setContextNotice] = useState<string | null>(null);
+  const [suggestedFilters, setSuggestedFilters] = useState<SuggestedFilters>({});
   const [dataset, setDataset] = useState<DatasetMode | null>(null);
   const [topK, setTopK] = useState(10);
   const [topN, setTopN] = useState(5);
@@ -95,6 +100,7 @@ export function SearchPage() {
         // switch, and goal was preserved while audience and vibe were replaced,
         // so toggling panels silently rewrote two thirds of a written brief.
         setBrief((current) => ({
+          ...current,
           goal: current.goal || value.defaults?.goal || "",
           // No platform facet means the server sends an empty list; "Any" is
           // then ignored rather than treated as a filter.
@@ -133,6 +139,58 @@ export function SearchPage() {
   /** The structured fields, which are lists and bands rather than strings. */
   function updateTarget(field: string, value: unknown) {
     setBrief((current) => ({ ...current, [field]: value }));
+  }
+
+  async function extractContext() {
+    if (contextLoading || productText.trim().length < 20) return;
+    setContextLoading(true);
+    setContextError(null);
+    setContextNotice(null);
+    try {
+      const result = await api.extractProductContext(productText.trim(), kind);
+      if (!result.relevant) {
+        setBrief((current) => ({ ...current, product_context: null }));
+        setSuggestedFilters({});
+        setContextNotice(result.message || "This text did not include usable product or audience details.");
+        return;
+      }
+      setBrief((current) => ({ ...current, product_context: result.context }));
+      setSuggestedFilters(result.suggested_filters);
+    } catch (caught) {
+      setContextError(caught instanceof ApiError ? caught.message : "Could not extract product context.");
+    } finally {
+      setContextLoading(false);
+    }
+  }
+
+  function updateContext(field: keyof ProductContext, value: string | string[]) {
+    setBrief((current) => ({
+      ...current,
+      product_context: { ...current.product_context!, [field]: value },
+    }));
+  }
+
+  function changeProductText(value: string) {
+    setProductText(value);
+    setBrief((current) => ({ ...current, product_context: null }));
+    setSuggestedFilters({});
+    setContextError(null);
+    setContextNotice(null);
+  }
+
+  function clearProductContext() {
+    setProductText("");
+    setBrief((current) => ({ ...current, product_context: null }));
+    setSuggestedFilters({});
+    setContextError(null);
+    setContextNotice(null);
+  }
+
+  function acceptFilterSuggestion(field: string) {
+    const value = suggestedFilters[field as keyof SuggestedFilters];
+    if (value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0)) return;
+    updateTarget(field, field === "target_size" && Array.isArray(value) && value.length === 2 ? value : value);
+    setSuggestedFilters((current) => ({ ...current, [field]: undefined }));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -319,6 +377,64 @@ export function SearchPage() {
                   </div>
                 </div>
               </details>
+              <details className="product-context-disclosure">
+                <summary>
+                  <span>Product context</span>
+                  <span className="optional-fields-status">{brief.product_context ? "Review context" : "Optional"}</span>
+                </summary>
+                <div className="product-context-content">
+                  <label className="brief-field" htmlFor="product-context-source">
+                    <span>Paste product or service details</span>
+                    <textarea
+                      id="product-context-source"
+                      value={productText}
+                      maxLength={12000}
+                      disabled={contextLoading}
+                      placeholder="Add product details, positioning, and intended customers."
+                      rows={5}
+                      onChange={(event) => changeProductText(event.target.value)}
+                    />
+                  </label>
+                  <p className="target-help">Text is sent to Gemini. On Google’s unpaid API tier, it may be used to improve Google products. Avoid confidential or personal information. The reviewed summary and excerpts are saved with each run; the original text is not stored.</p>
+                  <button className="btn btn-secondary" type="button" onClick={() => void extractContext()} disabled={contextLoading || productText.trim().length < 20}>
+                    {contextLoading ? "Extracting…" : "Extract details"}
+                  </button>
+                  {contextError && <p className="form-help" role="alert">{contextError}</p>}
+                  {contextNotice && <p className="target-help" role="status">{contextNotice}</p>}
+                  {brief.product_context && (
+                    <div className="product-context-review">
+                      <p className="context-review-label">Review extracted context before searching</p>
+                      <button className="btn btn-ghost" type="button" onClick={clearProductContext}>Remove context</button>
+                      <label className="brief-field">
+                        <span>Category</span>
+                        <input value={brief.product_context.category} onChange={(event) => updateContext("category", event.target.value)} />
+                      </label>
+                      <label className="brief-field">
+                        <span>Target audience</span>
+                        <textarea rows={2} value={brief.product_context.target_audience} onChange={(event) => updateContext("target_audience", event.target.value)} />
+                      </label>
+                      {(["use_cases", "differentiators", "exclusions"] as const).map((field) => (
+                        <label className="brief-field" key={field}>
+                          <span>{field === "use_cases" ? "Use cases" : field === "differentiators" ? "Differentiators" : "Exclusions"}</span>
+                          <textarea rows={2} value={brief.product_context![field].join("\n")} onChange={(event) => updateContext(field, event.target.value.split("\n").map((item) => item.trim()).filter(Boolean))} />
+                        </label>
+                      ))}
+                      {brief.product_context.source_quotes.length > 0 && (
+                        <details className="context-quotes">
+                          <summary>Source excerpts</summary>
+                          {brief.product_context.source_quotes.map((quote) => <blockquote key={quote}>{quote}</blockquote>)}
+                        </details>
+                      )}
+                    </div>
+                  )}
+                  {Object.entries(suggestedFilters).filter(([, value]) => value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length > 0)).map(([field, value]) => (
+                    <div className="context-filter-suggestion" key={field}>
+                      <span>{filterSuggestionLabel(field)}: {field === "min_reach_ratio" ? `${Math.round(Number(value) * 100)}%` : Array.isArray(value) ? value.join("–") : String(value)}</span>
+                      <button className="btn btn-ghost" type="button" onClick={() => acceptFilterSuggestion(field)}>Apply</button>
+                    </div>
+                  ))}
+                </div>
+              </details>
               <div className="rail-divider" />
               <div className="retrieval-controls">
                 <div className="control-heading"><span>Search depth</span><span className="control-value">{topK} → {topN}</span></div>
@@ -426,4 +542,20 @@ export function SearchPage() {
       )}
     </section>
   );
+}
+
+function filterSuggestionLabel(field: string): string {
+  const labels: Record<string, string> = {
+    audience_age: "Audience age",
+    audience_gender: "Audience gender",
+    audience_countries: "Audience countries",
+    languages: "Languages",
+    min_reach_ratio: "Minimum reach ratio",
+    target_industries: "Industries",
+    target_size: "Company size",
+    target_countries: "Company countries",
+    budget_band: "Budget",
+    buyer_roles: "Buyer roles",
+  };
+  return labels[field] ?? field;
 }

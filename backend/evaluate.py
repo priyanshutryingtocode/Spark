@@ -417,7 +417,7 @@ def _warmup(conn, corpus) -> None:
 
 
 def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None,
-              corpus=CREATORS, ranks: bool = True) -> dict:
+              corpus=CREATORS, ranks: bool = True, query_mode: str = "runtime") -> dict:
     # A creator case states its target audience; a company case states its ICP.
     # Both are the brief's requirements AND the definition of a correct
     # candidate, so one field drives the filters and the judgement.
@@ -432,6 +432,7 @@ def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None,
     brief = Brief(
         goal=case["goal"], platform=case.get("platform", "Any"),
         audience=case.get("audience", ""), vibe=case.get("vibe", ""),
+        product_context=case.get("product_context"),
         audience_age=list(expected_audience.get("age", [])),
         audience_gender=expected_audience.get("gender", ""),
         audience_countries=list(expected_audience.get("countries", [])),
@@ -440,15 +441,30 @@ def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None,
         target_countries=list(expected_icp.get("countries", [])),
     )
     expected_tags = set(case["expected_tags"])
-    brief_terms = terms(f"{brief.goal} {brief.audience} {brief.vibe}")
+    context = brief.product_context or {}
+    context_terms = " ".join([
+        str(context.get("category", "")),
+        str(context.get("target_audience", "")),
+        " ".join(context.get("use_cases", [])),
+        " ".join(context.get("differentiators", [])),
+    ])
+    brief_terms = terms(f"{brief.goal} {brief.audience} {brief.vibe} {context_terms}")
 
+    if query_mode not in {"runtime", "intent", "combined", "dual"}:
+        raise ValueError(f"unknown query mode: {query_mode}")
     embed_start = perf_counter()
-    query_vec = get_cached_query_vector(brief.query_text(), query_cache)
+    context_vec = None
+    if query_mode == "combined":
+        query_vec = get_cached_query_vector(brief.query_text(), query_cache)
+    else:
+        query_vec = get_cached_query_vector(brief.intent_query_text(), query_cache)
+        if query_mode in {"dual", "runtime"} and brief.context_query_text():
+            context_vec = get_cached_query_vector(brief.context_query_text(), query_cache)
     embed_ms = round((perf_counter() - embed_start) * 1000, 1)
 
     search_start = perf_counter()
     candidates, relaxed_filters = retrieve_for_run(
-        brief, top_k=top_k, query_vec=query_vec, corpus=corpus
+        brief, top_k=top_k, query_vec=query_vec, context_vec=context_vec, corpus=corpus
     )
     search_ms = round((perf_counter() - search_start) * 1000, 1)
     # The reranked shortlist, computed before any ranking call. Both orders are
@@ -499,6 +515,7 @@ def _run_case(client, case: dict, top_k: int, top_n: int, query_cache=None,
         "hard": bool(case.get("hard")),
         "retrieved_count": len(candidates),
         "relaxed_filters": relaxed_filters,
+        "query_mode": query_mode,
         "retrieval_tag_precision_at_k": round(tag_precision(candidates, expected_tags), 3),
         "retrieval_tag_hit_at_k": retrieved_correct > 0,
         # Label-free relevance: how much of the brief's own wording appears in

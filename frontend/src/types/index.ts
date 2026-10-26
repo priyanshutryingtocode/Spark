@@ -3,11 +3,21 @@ export type RankingSource = "llm" | "llm_unverified" | "filled" | "fallback";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type DatasetMode = "synthetic" | "real";
 
+export interface ProductContext {
+  category: string;
+  target_audience: string;
+  use_cases: string[];
+  differentiators: string[];
+  exclusions: string[];
+  source_quotes: string[];
+}
+
 export interface Brief {
   goal: string;
   platform: string;
   audience: string;
   vibe: string;
+  product_context?: ProductContext | null;
   /** Structured, optional. The free-text fields above still drive the embedding;
    *  these drive the filters and the rerank. Each corpus reads only its own. */
   audience_age?: string[];
@@ -20,6 +30,19 @@ export interface Brief {
   target_countries?: string[];
   budget_band?: string;
   buyer_roles?: string[];
+}
+
+export type SuggestedFilters = Partial<Pick<Brief,
+  "audience_age" | "audience_gender" | "audience_countries" | "languages"
+  | "min_reach_ratio" | "target_industries" | "target_size" | "target_countries"
+  | "budget_band" | "buyer_roles"
+>>;
+
+export interface ProductContextExtraction {
+  relevant: boolean;
+  message: string;
+  context: ProductContext;
+  suggested_filters: SuggestedFilters;
 }
 
 export interface MatchParams {
